@@ -1,5 +1,5 @@
-#ifndef _PROTOCOL_H
-#define _PROTOCOL_H
+#ifndef __PROTOCOL_H
+#define __PROTOCOL_H
 
 #include <arpa/inet.h>
 #include <stdint.h>
@@ -70,4 +70,4 @@ static inline void unmarshal_req(struct msg_req *req) {
   req->opcode = ntohs(req->opcode);
   req->req_id = ntohll(req->req_id);
 }
-#endif // _PROTOCOL_H
+#endif // !__PROTOCOL_H
