@@ -15,7 +15,7 @@ int server_register_handler(struct server *s, const int opcode,
     return RPC_EINVOPCODE;
   }
 
-  uint64_t (*fn)(uint64_t, uint64_t) = s->handlers[opcode];
+  void *fn = s->handlers[opcode];
 
   if (fn != NULL && !(flags & RF_OVERWRITE)) {
     return RPC_EINVAL;
