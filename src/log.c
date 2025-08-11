@@ -23,9 +23,6 @@ void log_message(enum LOG_LEVEL level, const char *msg) {
   unsigned char sz = color[0];
 
   strncpy(level_name, color + 1, sz);
-  for (int i = sz; i < 6; ++i) {
-    level_name[i] = ' ';
-  }
   level_name[5] = '\0';
   color += 1 + sz;
 
@@ -34,8 +31,8 @@ void log_message(enum LOG_LEVEL level, const char *msg) {
 
   strftime(time_format, sizeof(time_format), "%Y-%m-%d %H:%M:%S", p);
 
-  printf("%s[%s][%s][%s]%s %s\n", color, level_name, time_format, prefix, RESET,
-         msg);
+  printf("%s[%s][%s] [%s]%s %s\n", color, level_name, time_format, prefix,
+         RESET, msg);
 }
 
 void log_set_minimum_level(enum LOG_LEVEL level) { min_level = level; }
