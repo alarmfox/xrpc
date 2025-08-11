@@ -29,19 +29,15 @@ void transport_init(struct transport **s, const void *_args) {
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
   strncpy(addr.sun_path, args->unix_socket_path, 108);
 
-  if (fd = socket(AF_UNIX, SOCK_STREAM, 0), fd < 0)
-    bail("socket");
+  if (fd = socket(AF_UNIX, SOCK_STREAM, 0), fd < 0) bail("socket");
 
   ret = unlink(args->unix_socket_path);
-  if (ret < 0 && errno != ENOENT)
-    bail("unlink");
+  if (ret < 0 && errno != ENOENT) bail("unlink");
 
   ret = bind(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_un));
-  if (ret < 0)
-    bail("bind");
+  if (ret < 0) bail("bind");
 
-  if (ret = listen(fd, BACKLOG), ret < 0)
-    bail("listen");
+  if (ret = listen(fd, BACKLOG), ret < 0) bail("listen");
 
   *s = malloc(sizeof(struct transport));
 
@@ -54,8 +50,7 @@ int transport_recv(struct transport *s, struct request *r) {
   int client_fd;
 
   client_fd = accept(s->fd, 0, 0);
-  if (client_fd < 0)
-    return -1;
+  if (client_fd < 0) return -1;
 
   log_message(LOG_LV_DEBUG, "got message");
 
@@ -85,9 +80,7 @@ int transport_send(struct transport *s, struct response *r) {
   return ret;
 }
 void transport_free(struct transport *s) {
-  if (s->client_fd > 0) {
-    close(s->client_fd);
-  }
+  if (s->client_fd > 0) { close(s->client_fd); }
   close(s->fd);
   free(s);
   s = NULL;
@@ -100,8 +93,7 @@ int read_all(int fd, void *buf, ssize_t len) {
   do {
     n = read(fd, tmp + tot_read, len - tot_read);
     if (n < 0) {
-      if (errno == EINTR)
-        continue;
+      if (errno == EINTR) continue;
       return -1;
     }
 
@@ -117,9 +109,7 @@ int write_all(int fd, const void *buf, ssize_t len) {
 
   do {
     n = write(fd, tmp + tot_write, len - tot_write);
-    if (n <= 0) {
-      return -1;
-    }
+    if (n <= 0) { return -1; }
 
     tot_write += n;
   } while (tot_write < len);

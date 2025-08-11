@@ -14,8 +14,7 @@ void log_init(const char *p) {
 }
 
 void log_message(enum LOG_LEVEL level, const char *msg) {
-  if (level < min_level)
-    return;
+  if (level < min_level) return;
 
   char level_name[6];
   char time_format[64];

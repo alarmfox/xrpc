@@ -31,15 +31,12 @@ void transport_init(struct transport **s, const void *_args) {
                              .sin_port = htons(args->sport),
                              .sin_addr = {.s_addr = htonl(args->saddr)}};
 
-  if (fd = socket(AF_INET, SOCK_STREAM, 0), fd < 0)
-    bail("socket");
+  if (fd = socket(AF_INET, SOCK_STREAM, 0), fd < 0) bail("socket");
 
   ret = bind(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_in));
-  if (ret < 0)
-    bail("bind");
+  if (ret < 0) bail("bind");
 
-  if (ret = listen(fd, BACKLOG), ret < 0)
-    bail("listen");
+  if (ret = listen(fd, BACKLOG), ret < 0) bail("listen");
 
   *s = malloc(sizeof(struct transport));
 
@@ -55,8 +52,7 @@ int transport_recv(struct transport *s, struct request *r) {
   char buf[64];
 
   client_fd = accept(s->fd, (struct sockaddr *)&client, &client_len);
-  if (client_fd < 0)
-    return -1;
+  if (client_fd < 0) return -1;
 
   sprintf(buf, "got message from %s:%d", inet_ntoa(client.sin_addr),
           ntohs(client.sin_port));
@@ -89,9 +85,7 @@ int transport_send(struct transport *s, struct response *r) {
 }
 
 void transport_free(struct transport *s) {
-  if (s->client_fd > 0) {
-    close(s->client_fd);
-  }
+  if (s->client_fd > 0) { close(s->client_fd); }
   close(s->fd);
   free(s);
   s = NULL;
@@ -104,8 +98,7 @@ int read_all(int fd, void *buf, ssize_t len) {
   do {
     n = read(fd, tmp + tot_read, len - tot_read);
     if (n < 0) {
-      if (errno == EINTR)
-        continue;
+      if (errno == EINTR) continue;
       return -1;
     }
 
@@ -121,9 +114,7 @@ int write_all(int fd, const void *buf, ssize_t len) {
 
   do {
     n = write(fd, tmp + tot_write, len - tot_write);
-    if (n <= 0) {
-      return -1;
-    }
+    if (n <= 0) { return -1; }
 
     tot_write += n;
   } while (tot_write < len);

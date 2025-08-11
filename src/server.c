@@ -34,16 +34,14 @@ int main() {
   struct request *req = malloc(sizeof(struct request));
   struct response *res = malloc(sizeof(struct response));
 
-  if (DEBUG)
-    log_set_minimum_level(LOG_LV_DEBUG);
+  if (DEBUG) log_set_minimum_level(LOG_LV_DEBUG);
 
   log_init(log_prefix);
 
   rpc_server_init(&rs);
   ret = rpc_server_register_handler(rs, OP_SUM, op_sum, RF_OVERWRITE);
 
-  if (ret < 0)
-    bail("cannot register handler");
+  if (ret < 0) bail("cannot register handler");
 
   transport_init(&t, (void *)&args);
 
