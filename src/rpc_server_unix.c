@@ -21,7 +21,7 @@ uint64_t op_sum(uint64_t a, uint64_t b) { return a + b; }
 
 #define bail(MSG, ERR)                                                         \
   {                                                                            \
-    char msg[255];                                                             \
+    char msg[512];                                                             \
     if (ERR != 0) {                                                            \
       snprintf(msg, sizeof(msg), "%s (errno=%d %s)", MSG, errno,               \
                strerror(errno));                                               \
@@ -32,7 +32,7 @@ uint64_t op_sum(uint64_t a, uint64_t b) { return a + b; }
 
 #define dbg_params(REQ, RES)                                                   \
   {                                                                            \
-    char msg[1024];                                                            \
+    char msg[256];                                                             \
     snprintf(                                                                  \
         msg, sizeof(msg),                                                      \
         "req(id=%lu opcode=%d op1=%lu op2=%lu) res(id=%lu opcode=%d res=%lu)", \
