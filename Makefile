@@ -14,7 +14,7 @@ endif
 ## all: build all executables
 all: build/rpc_server_unix
 
-build/rpc_server_unix: build/rpc_server_unix.o build/protocol.o
+build/rpc_server_unix: build/rpc_server_unix.o build/protocol.o build/log.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
 build/%.o: src/%.c | build
@@ -25,7 +25,7 @@ build:
 
 ## clean: remove artifacts
 clean:
-	rm -rf build
+	rm -rf build/*.o build/rpc_server_unix
 
 .PHONY: help
 ## help: prints this help message
