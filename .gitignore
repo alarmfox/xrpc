@@ -1,6 +1,7 @@
 /*
 !/.github
 !/.gitignore
+!/.clangd
 !/README.md
 !/src
 !/include
