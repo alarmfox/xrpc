@@ -10,7 +10,7 @@ static enum LOG_LEVEL min_level = LOG_LV_INFO;
 void log_init(const char *p) {
   size_t l = strlen(p);
   prefix = malloc(1 + sizeof(char) * l);
-  strcpy(prefix, p);
+  strncpy(prefix, p, l + 1);
 }
 
 void log_message(enum LOG_LEVEL level, const char *msg) {
