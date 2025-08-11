@@ -14,8 +14,8 @@
 struct __attribute__((packed)) msg_req {
   uint16_t opcode;
   uint64_t req_id;
-  uint64_t op_a;
-  uint64_t op_b;
+  uint64_t op1;
+  uint64_t op2;
 };
 
 struct __attribute__((packed)) msg_res {
@@ -35,7 +35,8 @@ struct server {
 
 void server_init(struct server **s);
 int server_register_handler(struct server *s, int opcode,
-                            uint64_t (*op)(uint64_t, uint64_t), int flags);
+                            uint64_t (*op)(uint64_t, uint64_t),
+                            const int flags);
 
 void server_handle_req(const struct server *s, const struct msg_req *req,
                        struct msg_res *res);
@@ -65,8 +66,8 @@ static inline void marshal_res(struct msg_res *res) {
 }
 
 static inline void unmarshal_req(struct msg_req *req) {
-  req->op_a = ntohll(req->op_a);
-  req->op_b = ntohll(req->op_b);
+  req->op1 = ntohll(req->op1);
+  req->op2 = ntohll(req->op2);
   req->opcode = ntohs(req->opcode);
   req->req_id = ntohll(req->req_id);
 }

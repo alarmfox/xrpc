@@ -9,7 +9,8 @@ void server_init(struct server **s) {
 }
 
 int server_register_handler(struct server *s, const int opcode,
-                            uint64_t (*op)(uint64_t, uint64_t), int flags) {
+                            uint64_t (*op)(uint64_t, uint64_t),
+                            const int flags) {
 
   if (opcode >= MAX_HANDLERS) {
     return RPC_EINVOPCODE;
@@ -29,7 +30,7 @@ int server_register_handler(struct server *s, const int opcode,
 void server_handle_req(const struct server *s, const struct msg_req *req,
                        struct msg_res *res) {
 
-  if (req->opcode > MAX_HANDLERS) {
+  if (req->opcode >= MAX_HANDLERS) {
     // TODO: return invalid opcode
     return;
   }
@@ -41,7 +42,7 @@ void server_handle_req(const struct server *s, const struct msg_req *req,
     return;
   }
 
-  res->res = fn(req->op_a, req->op_b);
+  res->res = fn(req->op1, req->op2);
   res->opcode = req->opcode;
   res->req_id = req->req_id;
 }
