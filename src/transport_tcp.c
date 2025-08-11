@@ -17,7 +17,8 @@ struct transport {
 };
 
 struct transport_args {
-  char unix_socket_path[108];
+  uint32_t saddr;
+  uint16_t sport;
 };
 
 int read_all(int fd, void *buf, ssize_t len);
@@ -26,17 +27,14 @@ int write_all(int fd, const void *buf, ssize_t len);
 void transport_init(struct transport **s, const void *_args) {
   int ret, fd;
   struct transport_args *args = (struct transport_args *)_args;
-  struct sockaddr_un addr = {.sun_family = AF_UNIX};
-  strncpy(addr.sun_path, args->unix_socket_path, 108);
+  struct sockaddr_in addr = {.sin_family = AF_INET,
+                             .sin_port = htons(args->sport),
+                             .sin_addr = {.s_addr = htonl(args->saddr)}};
 
-  if (fd = socket(AF_UNIX, SOCK_STREAM, 0), fd < 0)
+  if (fd = socket(AF_INET, SOCK_STREAM, 0), fd < 0)
     bail("socket");
 
-  ret = unlink(args->unix_socket_path);
-  if (ret < 0 && errno != ENOENT)
-    bail("unlink");
-
-  ret = bind(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_un));
+  ret = bind(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_in));
   if (ret < 0)
     bail("bind");
 
@@ -52,12 +50,17 @@ void transport_init(struct transport **s, const void *_args) {
 int transport_recv(struct transport *s, struct request *r) {
 
   int client_fd;
+  struct sockaddr_in client;
+  socklen_t client_len = sizeof(struct sockaddr_in);
+  char buf[64];
 
-  client_fd = accept(s->fd, 0, 0);
+  client_fd = accept(s->fd, (struct sockaddr *)&client, &client_len);
   if (client_fd < 0)
     return -1;
 
-  log_message(LOG_LV_DEBUG, "got message");
+  sprintf(buf, "got message from %s:%d", inet_ntoa(client.sin_addr),
+          ntohs(client.sin_port));
+  log_message(LOG_LV_DEBUG, buf);
 
   if (read_all(client_fd, (void *)r, sizeof(struct request)) < 0) {
     log_error("error in receiving request");
@@ -84,6 +87,7 @@ int transport_send(struct transport *s, struct response *r) {
 
   return ret;
 }
+
 void transport_free(struct transport *s) {
   if (s->client_fd > 0) {
     close(s->client_fd);

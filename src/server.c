@@ -5,29 +5,39 @@
 #include "log.h"
 #include "transport.h"
 
-#define UNIX_SOCKET_PATH "/tmp/rpc.sock"
-
 #define OP_SUM 0x0
 
 #define DEBUG 1
 
 uint64_t op_sum(uint64_t a, uint64_t b) { return a + b; }
 
-struct unix_transport_args {
+#ifdef TRANSPORT_UNIX
+#define UNIX_SOCKET_PATH "/tmp/rpc.sock"
+struct transport_args {
   char unix_socket_path[108];
-};
+} args = {.unix_socket_path = UNIX_SOCKET_PATH};
+const char *log_prefix = "rpc_server_unix";
+#endif /* if TRANSPORT_UNIX */
+
+#ifdef TRANSPORT_TCP
+struct transport_args {
+  uint32_t saddr;
+  uint16_t sport;
+} args = {.saddr = INADDR_ANY, .sport = 9000};
+const char *log_prefix = "rpc_server_tcp";
+#endif /* if TRANSPORT_UNIX */
 
 int main() {
   int ret;
   struct transport *t = NULL;
-  struct unix_transport_args args = {.unix_socket_path = UNIX_SOCKET_PATH};
   struct rpc_server *rs = NULL;
   struct request *req = malloc(sizeof(struct request));
   struct response *res = malloc(sizeof(struct response));
 
-  log_init("rpc_server_unix");
   if (DEBUG)
     log_set_minimum_level(LOG_LV_DEBUG);
+
+  log_init(log_prefix);
 
   rpc_server_init(&rs);
   ret = rpc_server_register_handler(rs, OP_SUM, op_sum, RF_OVERWRITE);
@@ -42,6 +52,9 @@ int main() {
     rpc_server_handle_req(rs, req, res);
     dbg_request((*req), (*res));
     transport_send(t, res);
+
+    memset(req, 0, sizeof(struct request));
+    memset(res, 0, sizeof(struct response));
   }
 
   rpc_server_free(rs);
