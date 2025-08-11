@@ -1,2 +1,7 @@
-/build
-/.cache
+/*
+!/.github
+!/.gitignore
+!/README.md
+!/src
+!/include
+!/Makefile
