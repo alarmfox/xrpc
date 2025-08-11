@@ -1,8 +1,9 @@
 /*
+!/.clangd
 !/.github
 !/.gitignore
-!/.clangd
-!/README.md
-!/src
-!/include
 !/Makefile
+!/README.md
+!/include
+!/src
+!/test
