@@ -23,7 +23,7 @@ const char *log_prefix = "rpc_server_unix";
 struct transport_args {
   uint32_t saddr;
   uint16_t sport;
-} args = {.saddr = INADDR_ANY, .sport = 9000};
+} args = {.saddr = INADDR_LOOPBACK, .sport = 9000};
 const char *log_prefix = "rpc_server_tcp";
 #endif /* if TRANSPORT_UNIX */
 
