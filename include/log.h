@@ -1,6 +1,8 @@
 #ifndef __LOG_H
 #define __LOG_H
 
+#include <errno.h>
+
 enum LOG_LEVEL {
   LOG_LV_DEBUG = 0,
   LOG_LV_INFO = 1,
@@ -42,5 +44,35 @@ static inline char *__color_by_level(const enum LOG_LEVEL l) {
     return BLUE;
   };
 }
+
+#define bail(MSG)                                                              \
+  {                                                                            \
+    char msg[512];                                                             \
+    if (errno != 0) {                                                          \
+      snprintf(msg, sizeof(msg), "%s (errno=%d %s)", MSG, errno,               \
+               strerror(errno));                                               \
+    }                                                                          \
+    log_message(LOG_LV_ERROR, errno != 0 ? msg : MSG);                         \
+    exit(EXIT_FAILURE);                                                        \
+  }
+
+#define dbg_request(REQ, RES)                                                  \
+  {                                                                            \
+    char msg[128];                                                             \
+    snprintf(                                                                  \
+        msg, sizeof(msg),                                                      \
+        "req(id=%lu opcode=%d op1=%lu op2=%lu) res(id=%lu opcode=%d res=%lu)", \
+        REQ.req_id, REQ.opcode, REQ.op1, REQ.op2, RES.req_id, RES.opcode,      \
+        RES.res);                                                              \
+    log_message(LOG_LV_DEBUG, msg);                                            \
+  }
+
+#define log_error(MSG)                                                         \
+  {                                                                            \
+    char msg[512];                                                             \
+    snprintf(msg, sizeof(msg), "%s (errno=%d %s)", MSG, errno,                 \
+             strerror(errno));                                                 \
+    log_message(LOG_LV_ERROR, msg);                                            \
+  }
 
 #endif // !__LOG_H

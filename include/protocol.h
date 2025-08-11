@@ -4,21 +4,19 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 
-#define MAX_HANDLERS 255
-
 #define RPC_SUCCESS 0
 #define RPC_EINVAL -1
 #define RPC_EINVHANDLER -2
 #define RPC_EINVOPCODE -3
 
-struct __attribute__((packed)) msg_req {
+struct __attribute__((packed)) request {
   uint16_t opcode;
   uint64_t req_id;
   uint64_t op1;
   uint64_t op2;
 };
 
-struct __attribute__((packed)) msg_res {
+struct __attribute__((packed)) response {
   uint16_t opcode;
   uint64_t req_id;
   uint64_t res;
@@ -29,18 +27,16 @@ enum REGISTER_FLAGS {
   RF_OVERWRITE = 1 << 0,
 };
 
-struct server {
-  void *handlers[MAX_HANDLERS];
-};
+struct rpc_server;
 
-void server_init(struct server **s);
-int server_register_handler(struct server *s, int opcode,
-                            uint64_t (*op)(uint64_t, uint64_t),
-                            const int flags);
+void rpc_server_init(struct rpc_server **s);
+int rpc_server_register_handler(struct rpc_server *s, const int opcode,
+                                uint64_t (*op)(uint64_t, uint64_t),
+                                const int flags);
 
-void server_handle_req(const struct server *s, const struct msg_req *req,
-                       struct msg_res *res);
-void server_destroy(struct server *s);
+void rpc_server_handle_req(const struct rpc_server *s,
+                           const struct request *req, struct response *res);
+void rpc_server_free(struct rpc_server *s);
 
 /*  Utility functions to marshal and unmarshal uint64_t */
 static inline uint64_t htonll(uint64_t x) {
@@ -59,13 +55,13 @@ static inline uint64_t ntohll(uint64_t x) {
 #endif
 }
 
-static inline void marshal_res(struct msg_res *res) {
+static inline void marshal_res(struct response *res) {
   res->opcode = htons(res->opcode);
   res->res = htonll(res->res);
   res->req_id = htonll(res->req_id);
 }
 
-static inline void unmarshal_req(struct msg_req *req) {
+static inline void unmarshal_req(struct request *req) {
   req->op1 = ntohll(req->op1);
   req->op2 = ntohll(req->op2);
   req->opcode = ntohs(req->opcode);

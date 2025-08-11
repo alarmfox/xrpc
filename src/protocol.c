@@ -1,16 +1,22 @@
 #include "protocol.h"
 #include <stdlib.h>
 
-void server_init(struct server **s) {
-  *s = malloc(sizeof(struct server));
+#define MAX_HANDLERS 256
+
+struct rpc_server {
+  void *handlers[MAX_HANDLERS];
+};
+
+void rpc_server_init(struct rpc_server **s) {
+  *s = malloc(sizeof(struct rpc_server));
   for (int i = 0; i < MAX_HANDLERS; ++i) {
     (*s)->handlers[i] = NULL;
   }
 }
 
-int server_register_handler(struct server *s, const int opcode,
-                            uint64_t (*op)(uint64_t, uint64_t),
-                            const int flags) {
+int rpc_server_register_handler(struct rpc_server *s, const int opcode,
+                                uint64_t (*op)(uint64_t, uint64_t),
+                                const int flags) {
 
   if (opcode >= MAX_HANDLERS) {
     return RPC_EINVOPCODE;
@@ -27,8 +33,8 @@ int server_register_handler(struct server *s, const int opcode,
   return RPC_SUCCESS;
 }
 
-void server_handle_req(const struct server *s, const struct msg_req *req,
-                       struct msg_res *res) {
+void rpc_server_handle_req(const struct rpc_server *s,
+                           const struct request *req, struct response *res) {
 
   if (req->opcode >= MAX_HANDLERS) {
     // TODO: return invalid opcode
@@ -47,7 +53,7 @@ void server_handle_req(const struct server *s, const struct msg_req *req,
   res->req_id = req->req_id;
 }
 
-void server_destroy(struct server *s) {
+void rpc_server_free(struct rpc_server *s) {
   for (int i = 0; i < MAX_HANDLERS; ++i) {
     s->handlers[i] = NULL;
   }

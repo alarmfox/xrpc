@@ -15,7 +15,7 @@ endif
 all: build/rpc_server_unix
 
 ## build/rpc_server_unix: builds unix implementation
-build/rpc_server_unix: build/rpc_server_unix.o build/protocol.o build/log.o
+build/rpc_server_unix: build/server.o build/transport_unix.o build/protocol.o build/log.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
 build/%.o: src/%.c | build
