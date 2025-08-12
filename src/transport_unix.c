@@ -17,7 +17,7 @@ struct transport {
 };
 
 struct transport_args {
-  char unix_socket_path[108];
+  struct sockaddr_un sa;
 };
 
 int read_all(int fd, void *buf, ssize_t len);
@@ -26,12 +26,16 @@ int write_all(int fd, const void *buf, ssize_t len);
 void transport_init(struct transport **s, const void *_args) {
   int ret, fd;
   struct transport_args *args = (struct transport_args *)_args;
+  // alloc the server
+  *s = malloc(sizeof(struct transport));
+  struct transport *t = *s;
+
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
-  strncpy(addr.sun_path, args->unix_socket_path, 108);
+  strncpy(addr.sun_path, args->sa.sun_path, 108);
 
   if (fd = socket(AF_UNIX, SOCK_STREAM, 0), fd < 0) bail("socket");
 
-  ret = unlink(args->unix_socket_path);
+  ret = unlink(args->sa.sun_path);
   if (ret < 0 && errno != ENOENT) bail("unlink");
 
   ret = bind(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_un));
@@ -39,10 +43,8 @@ void transport_init(struct transport **s, const void *_args) {
 
   if (ret = listen(fd, BACKLOG), ret < 0) bail("listen");
 
-  *s = malloc(sizeof(struct transport));
-
-  (*s)->fd = fd;
-  (*s)->client_fd = -1;
+  t->fd = fd;
+  t->client_fd = -1;
 }
 
 int transport_recv(struct transport *s, struct request *r) {

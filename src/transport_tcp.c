@@ -17,8 +17,7 @@ struct transport {
 };
 
 struct transport_args {
-  uint32_t saddr;
-  uint16_t sport;
+  struct sockaddr_in sa;
 };
 
 int read_all(int fd, void *buf, ssize_t len);
@@ -26,22 +25,29 @@ int write_all(int fd, const void *buf, ssize_t len);
 
 void transport_init(struct transport **s, const void *_args) {
   int ret, fd;
+  char msg[64];
   struct transport_args *args = (struct transport_args *)_args;
-  struct sockaddr_in addr = {.sin_family = AF_INET,
-                             .sin_port = htons(args->sport),
-                             .sin_addr = {.s_addr = htonl(args->saddr)}};
+  args->sa.sin_addr.s_addr = htonl(args->sa.sin_addr.s_addr);
+  args->sa.sin_port = htons(args->sa.sin_port);
+
+  *s = malloc(sizeof(struct transport));
+  struct transport *t = *s;
 
   if (fd = socket(AF_INET, SOCK_STREAM, 0), fd < 0) bail("socket");
 
-  ret = bind(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_in));
+  ret = bind(fd, (const struct sockaddr *)&(args->sa),
+             sizeof(struct sockaddr_in));
   if (ret < 0) bail("bind");
 
   if (ret = listen(fd, BACKLOG), ret < 0) bail("listen");
 
-  *s = malloc(sizeof(struct transport));
+  snprintf(msg, sizeof(msg), "listening on %s:%d", inet_ntoa(args->sa.sin_addr),
+           args->sa.sin_port);
 
-  (*s)->fd = fd;
-  (*s)->client_fd = -1;
+  log_message(LOG_LV_INFO, msg);
+
+  t->fd = fd;
+  t->client_fd = -1;
 }
 
 int transport_recv(struct transport *s, struct request *r) {

@@ -13,19 +13,27 @@ uint64_t op_sum(uint64_t a, uint64_t b) { return a + b; }
 
 #ifdef TRANSPORT_UNIX
 #define UNIX_SOCKET_PATH "/tmp/rpc.sock"
+#include <sys/un.h>
 struct transport_args {
-  char unix_socket_path[108];
-} args = {.unix_socket_path = UNIX_SOCKET_PATH};
+  struct sockaddr_un sa;
+} args = {.sa = {.sun_family = AF_LOCAL, .sun_path = UNIX_SOCKET_PATH}};
 const char *log_prefix = "rpc_server_unix";
 #endif /* if TRANSPORT_UNIX */
 
 #ifdef TRANSPORT_TCP
 struct transport_args {
-  uint32_t saddr;
-  uint16_t sport;
-} args = {.saddr = INADDR_LOOPBACK, .sport = 9000};
+  struct sockaddr_in sa;
+} args = {.sa = {
+              .sin_family = AF_INET,
+              .sin_addr =
+                  {
+                      .s_addr = INADDR_LOOPBACK,
+                  },
+              .sin_port = 9000,
+
+          }};
 const char *log_prefix = "rpc_server_tcp";
-#endif /* if TRANSPORT_UNIX */
+#endif /* if TRANSPORT_TCP */
 
 int main() {
   int ret;
