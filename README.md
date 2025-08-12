@@ -12,6 +12,7 @@ To get a working LSP, you can use [Bear](https://github.com/rizsotto/Bear) to ge
 The `.clangd` file will assume the `compile_commands.json` is in the `build/` directory.
 
 ```sh
+mkdir build
 bear -- make
 mv compile_commands.json build/
 ```
