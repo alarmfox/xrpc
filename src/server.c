@@ -35,6 +35,30 @@ struct transport_args {
 const char *log_prefix = "rpc_server_tcp";
 #endif /* if TRANSPORT_TCP */
 
+#ifdef TRANSPORT_TCP_TLS
+#define CRT_PATH "certs/certificate.crt"
+#define KEY_PATH "certs/key"
+struct transport_args {
+  struct sockaddr_in sa;
+  char *crt_path;
+  char *key_path;
+} args = {
+    .sa =
+        {
+            .sin_family = AF_INET,
+            .sin_addr =
+                {
+                    .s_addr = INADDR_LOOPBACK,
+                },
+            .sin_port = 9000,
+
+        },
+    .crt_path = CRT_PATH,
+    .key_path = KEY_PATH,
+};
+const char *log_prefix = "rpc_server_tcp_tls";
+#endif /* if TRANSPORT_TCP_TLS */
+
 int main() {
   int ret;
   struct transport *t = NULL;
