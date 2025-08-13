@@ -13,14 +13,17 @@ uint64_t op_sum(uint64_t a, uint64_t b) { return a + b; }
 
 #ifdef TRANSPORT_UNIX
 #define UNIX_SOCKET_PATH "/tmp/rpc.sock"
+const char *log_prefix = "rpc_server_unix";
+
 #include <sys/un.h>
 struct transport_args {
   struct sockaddr_un sa;
 } args = {.sa = {.sun_family = AF_LOCAL, .sun_path = UNIX_SOCKET_PATH}};
-const char *log_prefix = "rpc_server_unix";
 #endif /* if TRANSPORT_UNIX */
 
 #ifdef TRANSPORT_TCP
+const char *log_prefix = "rpc_server_tcp";
+
 struct transport_args {
   struct sockaddr_in sa;
 } args = {.sa = {
@@ -32,12 +35,16 @@ struct transport_args {
               .sin_port = 9000,
 
           }};
-const char *log_prefix = "rpc_server_tcp";
+
 #endif /* if TRANSPORT_TCP */
 
 #ifdef TRANSPORT_TCP_TLS
+
 #define CRT_PATH "certs/certificate.crt"
-#define KEY_PATH "certs/key"
+#define KEY_PATH "certs/pkey"
+
+const char *log_prefix = "rpc_server_tcp_tls";
+
 struct transport_args {
   struct sockaddr_in sa;
   char *crt_path;
@@ -56,7 +63,7 @@ struct transport_args {
     .crt_path = CRT_PATH,
     .key_path = KEY_PATH,
 };
-const char *log_prefix = "rpc_server_tcp_tls";
+
 #endif /* if TRANSPORT_TCP_TLS */
 
 int main() {
