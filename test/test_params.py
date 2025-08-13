@@ -2,6 +2,7 @@ import random
 import socket
 import struct
 import sys
+import ssl
 
 UNIX_SOCKET_PATH: str = "/tmp/rpc.sock"
 SERVER_ADDRESS: str = "localhost"
@@ -31,14 +32,24 @@ def unix(path: str) -> None:
 
 
 def tcp(address: str, port: int) -> None:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as s:
+    with socket.create_connection((address, port)) as s:
         s.connect((address, port))
         test(s)
 
 
+def tls(address: str, port: int) -> None:
+    context = ssl.create_default_context(cafile="certs/certificate.crt")
+    context.check_hostname = False
+
+    with socket.create_connection((address, port)) as sock:
+        with context.wrap_socket(sock, server_hostname="localhost") as ssock:
+            print(ssock.version)
+            test(ssock)
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("usage: <script> tcp/unix")
+        print("usage: <script> tcp/unix/tls")
         sys.exit(1)
 
     transport = sys.argv[1]
@@ -46,6 +57,8 @@ if __name__ == "__main__":
         unix(UNIX_SOCKET_PATH)
     elif transport == "tcp":
         tcp(SERVER_ADDRESS, SERVER_PORT)
+    elif transport == "tls":
+        tls(SERVER_ADDRESS, SERVER_PORT)
     else:
         print("unsupported transport:", transport)
         sys.exit(1)
