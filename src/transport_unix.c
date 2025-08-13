@@ -31,7 +31,7 @@ void transport_init(struct transport **s, const void *_args) {
   struct transport *t = *s;
 
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
-  strncpy(addr.sun_path, args->sa.sun_path, 108);
+  strncpy(addr.sun_path, args->sa.sun_path, sizeof(args->sa.sun_path));
 
   if (fd = socket(AF_UNIX, SOCK_STREAM, 0), fd < 0) bail("socket");
 
