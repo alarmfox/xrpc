@@ -7,22 +7,26 @@ import ssl
 UNIX_SOCKET_PATH: str = "/tmp/rpc.sock"
 SERVER_ADDRESS: str = "localhost"
 SERVER_PORT: int = 9000
+MAX_REPETITONS: int = 2
 
 OP_SUM: int = 0
 
+SUPPORTED_TRANSPORTS: [str] = ["tcp", "unix", "tls"]
 
-def test(s) -> None:
-    a = random.randint(0, 10)
-    b = random.randint(0, 10)
-    id = random.randint(0, 100000)
-    data = struct.pack("!HQQQ", OP_SUM, id, a, b)
 
-    s.sendall(data)
+def test(s: socket.socket, reps: int = 100) -> None:
+    for _ in range(MAX_REPETITONS):
+        a = random.randint(0, 10)
+        b = random.randint(0, 10)
+        id = random.randint(0, 100000)
+        data = struct.pack("!HQQQ", OP_SUM, id, a, b)
 
-    res = s.recv(8 + 8 + 2)
-    res = struct.unpack("!HQQ", res)
-    assert res[1] == id, "request id does not match"
-    assert res[2] == a + b, "sum is not correct"
+        s.sendall(data)
+
+        res = s.recv(8 + 8 + 2)
+        res = struct.unpack("!HQQ", res)
+        assert res[1] == id, "request id does not match"
+        assert res[2] == a + b, "sum is not correct"
 
 
 def unix(path: str) -> None:
@@ -33,7 +37,6 @@ def unix(path: str) -> None:
 
 def tcp(address: str, port: int) -> None:
     with socket.create_connection((address, port)) as s:
-        s.connect((address, port))
         test(s)
 
 
@@ -49,7 +52,7 @@ def tls(address: str, port: int) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("usage: <script> tcp/unix/tls")
+        print("Usage: <script>", "|".join(SUPPORTED_TRANSPORTS))
         sys.exit(1)
 
     transport = sys.argv[1]
