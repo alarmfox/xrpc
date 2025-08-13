@@ -1,8 +1,9 @@
-#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include "log.h"
 
 static char *prefix;
 static enum LOG_LEVEL min_level = LOG_LV_INFO;
@@ -32,6 +33,8 @@ void log_message(enum LOG_LEVEL level, const char *msg) {
 
   printf("%s[%s][%s] [%s]%s %s\n", color, level_name, time_format, prefix,
          RESET, msg);
+
+  fflush(stdout);
 }
 
 void log_set_minimum_level(enum LOG_LEVEL level) { min_level = level; }
