@@ -47,23 +47,27 @@ void transport_init(struct transport **s, const void *_args) {
   t->client_fd = -1;
 }
 
-int transport_recv(struct transport *s, struct request *r) {
+int transport_poll_client(struct transport *t) {
 
   int client_fd;
 
-  client_fd = accept(s->fd, 0, 0);
+  client_fd = accept(t->fd, 0, 0);
   if (client_fd < 0) return -1;
 
-  log_message(LOG_LV_DEBUG, "got message");
+  t->client_fd = client_fd;
+  return 0;
+}
 
-  if (read_all(client_fd, (void *)r, sizeof(struct request)) < 0) {
-    log_error("error in receiving request");
+int transport_recv(struct transport *s, struct request *r) {
+
+  int ret;
+  if (ret = read_all(s->client_fd, (void *)r, sizeof(struct request)),
+      ret < 0) {
     close(s->client_fd);
-    return -1;
+    return ret;
   }
 
   unmarshal_req(r);
-  s->client_fd = client_fd;
   return 0;
 }
 
@@ -76,11 +80,9 @@ int transport_send(struct transport *s, struct response *r) {
     ret = -1;
   }
 
-  close(s->client_fd);
-  s->client_fd = -1;
-
   return ret;
 }
+
 void transport_free(struct transport *s) {
   if (s->client_fd > 0) { close(s->client_fd); }
   close(s->fd);
@@ -90,17 +92,18 @@ void transport_free(struct transport *s) {
 
 int read_all(int fd, void *buf, ssize_t len) {
   ssize_t tot_read = 0, n;
-  char *tmp = (char *)buf;
+  unsigned char *tmp = (unsigned char *)buf;
 
   do {
     n = read(fd, tmp + tot_read, len - tot_read);
+    if (n == 0) return -1;
     if (n < 0) {
       if (errno == EINTR) continue;
       return -1;
     }
 
     tot_read += n;
-  } while ((tot_read < len) && n != EOF);
+  } while (tot_read < len);
 
   return tot_read == len ? len : -1;
 }
@@ -111,7 +114,7 @@ int write_all(int fd, const void *buf, ssize_t len) {
 
   do {
     n = write(fd, tmp + tot_write, len - tot_write);
-    if (n <= 0) { return -1; }
+    if (n <= 0) return -1;
 
     tot_write += n;
   } while (tot_write < len);

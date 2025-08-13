@@ -42,7 +42,7 @@ void transport_init(struct transport **s, const void *_args) {
   if (ret = listen(fd, BACKLOG), ret < 0) bail("listen");
 
   snprintf(msg, sizeof(msg), "listening on %s:%d", inet_ntoa(args->sa.sin_addr),
-           args->sa.sin_port);
+           ntohs(args->sa.sin_port));
 
   log_message(LOG_LV_INFO, msg);
 
@@ -50,28 +50,31 @@ void transport_init(struct transport **s, const void *_args) {
   t->client_fd = -1;
 }
 
-int transport_recv(struct transport *s, struct request *r) {
+int transport_poll_client(struct transport *t) {
 
   int client_fd;
   struct sockaddr_in client;
   socklen_t client_len = sizeof(struct sockaddr_in);
   char buf[64];
 
-  client_fd = accept(s->fd, (struct sockaddr *)&client, &client_len);
+  client_fd = accept(t->fd, (struct sockaddr *)&client, &client_len);
   if (client_fd < 0) return -1;
 
-  sprintf(buf, "got message from %s:%d", inet_ntoa(client.sin_addr),
+  sprintf(buf, "got connection from %s:%d", inet_ntoa(client.sin_addr),
           ntohs(client.sin_port));
   log_message(LOG_LV_DEBUG, buf);
+  t->client_fd = client_fd;
 
-  if (read_all(client_fd, (void *)r, sizeof(struct request)) < 0) {
-    log_error("error in receiving request");
+  return 0;
+}
+
+int transport_recv(struct transport *s, struct request *r) {
+  if (read_all(s->client_fd, (void *)r, sizeof(struct request)) < 0) {
     close(s->client_fd);
     return -1;
   }
 
   unmarshal_req(r);
-  s->client_fd = client_fd;
   return 0;
 }
 
@@ -83,9 +86,6 @@ int transport_send(struct transport *s, struct response *r) {
     log_error("error in sending request");
     ret = -1;
   }
-
-  close(s->client_fd);
-  s->client_fd = -1;
 
   return ret;
 }
@@ -99,28 +99,27 @@ void transport_free(struct transport *s) {
 
 int read_all(int fd, void *buf, ssize_t len) {
   ssize_t tot_read = 0, n;
-  char *tmp = (char *)buf;
+  unsigned char *tmp = (unsigned char *)buf;
 
   do {
     n = read(fd, tmp + tot_read, len - tot_read);
-    if (n < 0) {
+    if (n <= 0) {
       if (errno == EINTR) continue;
       return -1;
     }
-
     tot_read += n;
-  } while ((tot_read < len) && n != EOF);
+  } while (tot_read < len);
 
   return tot_read == len ? len : -1;
 }
 
 int write_all(int fd, const void *buf, ssize_t len) {
   ssize_t tot_write = 0, n;
-  char *tmp = (char *)buf;
+  unsigned char *tmp = (unsigned char *)buf;
 
   do {
     n = write(fd, tmp + tot_write, len - tot_write);
-    if (n <= 0) { return -1; }
+    if (n <= 0) return -1;
 
     tot_write += n;
   } while (tot_write < len);

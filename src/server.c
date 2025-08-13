@@ -85,13 +85,19 @@ int main() {
   transport_init(&t, (void *)&args);
 
   log_message(LOG_LV_INFO, "waiting for connections");
-  while (transport_recv(t, req) == 0) {
-    rpc_server_handle_req(rs, req, res);
-    dbg_request((*req), (*res));
-    transport_send(t, res);
 
-    memset(req, 0, sizeof(struct request));
-    memset(res, 0, sizeof(struct response));
+  while (transport_poll_client(t) == 0) {
+    log_message(LOG_LV_INFO, "got a connection");
+    while (transport_recv(t, req) == 0) {
+      rpc_server_handle_req(rs, req, res);
+      dbg_request((*req), (*res));
+      transport_send(t, res);
+
+      memset(req, 0, sizeof(struct request));
+      memset(res, 0, sizeof(struct response));
+    }
+
+    log_message(LOG_LV_INFO, "closing connection");
   }
 
   rpc_server_free(rs);
