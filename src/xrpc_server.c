@@ -53,94 +53,94 @@ int xrpc_server_register(struct xrpc_server *srv, const size_t op,
 
 int xrpc_server_poll(struct xrpc_server *srv) {
   int ret = XRPC_SUCCESS;
-  void *payload = NULL;
+  struct xrpc_request_header rq_hdr;
+  struct xrpc_response_header rs_hdr;
+  struct xrpc_request request;
+  struct xrpc_response response;
+  xrpc_handler_fn fn = NULL;
+  unsigned char resp_buf[RESP_BUF_SIZE];
+
+  request.hdr = &rq_hdr;
+  response.hdr = &rs_hdr;
+
 new_client:
   if (ret = transport_poll_client(srv->t), ret != XRPC_SUCCESS) return ret;
 
   while (1) {
-    struct xrpc_request_header req_hdr;
-    struct xrpc_response_header res_hdr;
-    struct xrpc_request request;
-    xrpc_handler_fn fn = NULL;
-    unsigned char resp_buf[RESP_BUF_SIZE];
-    size_t resp_len = sizeof(resp_buf);
-
-    memset(&req_hdr, 0, sizeof(struct xrpc_request_header));
-    memset(&res_hdr, 0, sizeof(struct xrpc_response_header));
+    // reset the values
+    memset(request.hdr, 0, sizeof(struct xrpc_request_header));
+    memset(response.hdr, 0, sizeof(struct xrpc_response_header));
     memset(resp_buf, 0, sizeof(resp_buf));
 
     // read the header
-    ret = transport_recv(srv->t, (void *)&req_hdr,
+    ret = transport_recv(srv->t, (void *)request.hdr,
                          sizeof(struct xrpc_request_header));
 
     if (ret != XRPC_SUCCESS) goto exit;
 
-    payload = malloc(req_hdr.sz);
+    // allocate hdr.sz for the payload
+    request.data = malloc(request.hdr->sz);
 
-    if (!payload) {
+    if (!request.data) {
       ret = XRPC_API_ERR_ALLOC;
       goto exit;
     }
 
-    // read the request
-    ret = transport_recv(srv->t, payload, req_hdr.sz);
+    // read the request payload
+    ret = transport_recv(srv->t, (void *)request.data, request.hdr->sz);
     if (ret != XRPC_SUCCESS) goto exit;
-
-    // populate request field
-    request.data = payload;
-    request.len = req_hdr.sz;
-    request.resp_buf = resp_buf;
-    request.resp_len = &resp_len;
 
     // init response header
-    res_hdr.status = XRPC_RESPONSE_SUCCESS;
-    res_hdr.reqid = req_hdr.reqid;
-    res_hdr.op = res_hdr.op;
+    response.hdr->status = XRPC_RESPONSE_SUCCESS;
+    response.hdr->reqid = request.hdr->reqid;
+    response.hdr->op = request.hdr->op;
+    response.hdr->sz = RESP_BUF_SIZE;
 
-    if (req_hdr.op >= MAX_HANDLERS) {
-      res_hdr.status = XRPC_RESPONSE_UNSUPPORTED_HANDLER;
+    // init response body with a scratch buffer
+    response.data = resp_buf;
+
+    if (request.hdr->op >= MAX_HANDLERS) {
+      response.hdr->status = XRPC_RESPONSE_UNSUPPORTED_HANDLER;
       goto send_response;
     }
 
-    fn = srv->handlers[req_hdr.op];
+    fn = srv->handlers[request.hdr->op];
 
     if (!fn) {
-      res_hdr.status = XRPC_RESPONSE_UNSUPPORTED_HANDLER;
+      response.hdr->status = XRPC_RESPONSE_UNSUPPORTED_HANDLER;
       goto send_response;
     }
 
-    if (fn(&request) != 0) res_hdr.status = XRPC_RESPONSE_INTERNAL_ERROR;
+    if (fn(&request, &response) != 0)
+      response.hdr->status = XRPC_RESPONSE_INTERNAL_ERROR;
 
   send_response:
-    if (*request.resp_len > 0) { res_hdr.sz = *request.resp_len; }
 
     // send header
-    ret = transport_send(srv->t, (const void *)&res_hdr,
+    ret = transport_send(srv->t, (const void *)response.hdr,
                          sizeof(struct xrpc_response_header));
 
-    if (ret != XRPC_SUCCESS) goto exit;
-
     // send result
-    if ((res_hdr.status & ~XRPC_RESPONSE_SUCCESS) == 0) {
-      ret = transport_send(srv->t, (const void *)request.resp_buf,
-                           *request.resp_len);
+    if ((response.hdr->status & ~XRPC_RESPONSE_SUCCESS) == 0) {
+      ret =
+          transport_send(srv->t, (const void *)response.data, response.hdr->sz);
       if (ret != XRPC_SUCCESS) goto exit;
     }
 
-    if (payload) {
-      free(payload);
-      payload = NULL;
+    if (request.data) {
+      free((void *)request.data);
+      response.data = NULL;
     }
   }
 
 exit:
-  if (payload) free(payload);
   transport_release_client(srv->t);
 
   if (ret == XRPC_TRANSPORT_ERR_READ_CONN_CLOSED) goto new_client;
 
   return ret;
 }
+
 void xrpc_server_free(struct xrpc_server *srv) {
   if (!srv) return;
   for (int i = 0; i < MAX_HANDLERS; ++i) {
