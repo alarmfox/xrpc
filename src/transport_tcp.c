@@ -1,18 +1,19 @@
 #include <errno.h>
-#include <stdio.h>
+#include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
-#include "log.h"
+#include "debug.h"
+#include "error.h"
 #include "transport.h"
 
 #define BACKLOG 10
 
 struct transport {
-  int fd;
+  int server_fd;
   int client_fd;
 };
 
@@ -20,34 +21,36 @@ struct transport_args {
   struct sockaddr_in sa;
 };
 
-int read_all(int fd, void *buf, ssize_t len);
-int write_all(int fd, const void *buf, ssize_t len);
-
-void transport_init(struct transport **s, const void *_args) {
+int transport_init(struct transport **s, const void *_args) {
   int ret, fd;
-  char msg[64];
   struct transport_args *args = (struct transport_args *)_args;
+  struct transport *t = NULL;
   args->sa.sin_addr.s_addr = htonl(args->sa.sin_addr.s_addr);
   args->sa.sin_port = htons(args->sa.sin_port);
 
   *s = malloc(sizeof(struct transport));
-  struct transport *t = *s;
+  if (!*s) {
+    XRPC_DEBUG_PRINT("malloc");
+    return XRPC_ERR_ALLOC;
+  }
 
-  if (fd = socket(AF_INET, SOCK_STREAM, 0), fd < 0) bail("socket");
+  t = *s;
+
+  if (fd = socket(AF_INET, SOCK_STREAM, 0), fd < 0)
+    _print_syscall_err_and_return("socket", XRPC_ERR_SOCKET);
 
   ret = bind(fd, (const struct sockaddr *)&(args->sa),
              sizeof(struct sockaddr_in));
-  if (ret < 0) bail("bind");
 
-  if (ret = listen(fd, BACKLOG), ret < 0) bail("listen");
+  if (ret < 0) _print_syscall_err_and_return("bind", XRPC_ERR_BIND);
 
-  snprintf(msg, sizeof(msg), "listening on %s:%d", inet_ntoa(args->sa.sin_addr),
-           ntohs(args->sa.sin_port));
+  if (ret = listen(fd, BACKLOG), ret < 0)
+    _print_syscall_err_and_return("listen", XRPC_ERR_LISTEN);
 
-  log_message(LOG_LV_INFO, msg);
-
-  t->fd = fd;
+  t->server_fd = fd;
   t->client_fd = -1;
+
+  return XRPC_SUCCESS;
 }
 
 int transport_poll_client(struct transport *t) {
@@ -55,74 +58,52 @@ int transport_poll_client(struct transport *t) {
   int client_fd;
   struct sockaddr_in client;
   socklen_t client_len = sizeof(struct sockaddr_in);
-  char buf[64];
 
-  client_fd = accept(t->fd, (struct sockaddr *)&client, &client_len);
-  if (client_fd < 0) return -1;
+  client_fd = accept(t->server_fd, (struct sockaddr *)&client, &client_len);
+  if (client_fd < 0) _print_syscall_err_and_return("accept", XRPC_ERR_ACCEPT);
 
-  sprintf(buf, "got connection from %s:%d", inet_ntoa(client.sin_addr),
-          ntohs(client.sin_port));
-  log_message(LOG_LV_DEBUG, buf);
   t->client_fd = client_fd;
 
-  return 0;
+  return XRPC_SUCCESS;
 }
 
-int transport_recv(struct transport *s, struct request *r) {
-  if (read_all(s->client_fd, (void *)r, sizeof(struct request)) < 0) {
-    close(s->client_fd);
-    return -1;
-  }
+int transport_recv(struct transport *t, void *b, size_t s) {
+  size_t tot_read = 0;
+  ssize_t n;
+  unsigned char *tmp = (unsigned char *)b;
 
-  unmarshal_req(r);
-  return 0;
+  do {
+    n = read(t->client_fd, tmp + tot_read, s - tot_read);
+    if (n == 0) return XRPC_ERR_READ_CONN_CLOSED;
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      _print_syscall_err_and_return("read", XRPC_ERR_READ);
+    }
+    tot_read += n;
+  } while (tot_read < s);
+
+  return XRPC_SUCCESS;
 }
 
-int transport_send(struct transport *s, struct response *r) {
-  int ret = 0;
+int transport_send(struct transport *t, const void *b, size_t l) {
+  size_t tot_write = 0, n;
+  unsigned char *tmp = (unsigned char *)b;
 
-  marshal_res(r);
-  if (write_all(s->client_fd, (const void *)r, sizeof(struct response)) < 0) {
-    log_error("error in sending request");
-    ret = -1;
-  }
+  do {
+    n = write(t->client_fd, tmp + tot_write, l - tot_write);
+    if (n <= 0) _print_syscall_err_and_return("write", XRPC_ERR_WRITE);
 
-  return ret;
+    tot_write += n;
+  } while (tot_write < l);
+
+  return XRPC_SUCCESS;
+}
+
+void transport_release_client(struct transport *t) {
+  if (t->client_fd > 0) close(t->client_fd);
 }
 
 void transport_free(struct transport *s) {
-  if (s->client_fd > 0) { close(s->client_fd); }
-  close(s->fd);
+  close(s->server_fd);
   free(s);
-  s = NULL;
-}
-
-int read_all(int fd, void *buf, ssize_t len) {
-  ssize_t tot_read = 0, n;
-  unsigned char *tmp = (unsigned char *)buf;
-
-  do {
-    n = read(fd, tmp + tot_read, len - tot_read);
-    if (n <= 0) {
-      if (errno == EINTR) continue;
-      return -1;
-    }
-    tot_read += n;
-  } while (tot_read < len);
-
-  return tot_read == len ? len : -1;
-}
-
-int write_all(int fd, const void *buf, ssize_t len) {
-  ssize_t tot_write = 0, n;
-  unsigned char *tmp = (unsigned char *)buf;
-
-  do {
-    n = write(fd, tmp + tot_write, len - tot_write);
-    if (n <= 0) return -1;
-
-    tot_write += n;
-  } while (tot_write < len);
-
-  return 0;
 }

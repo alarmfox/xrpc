@@ -1,16 +1,18 @@
 CC ?= gcc
 
-CFLAGS = -Wall -Wextra -std=c99
-CFLAGS += -Iinclude/
-
 # TLS-only flags
 MBEDTLS_INC = -Iexternal/mbedtls/include
 MBEDTLS_LIBS = lib/libmbedtls.a lib/libmbedx509.a lib/libmbedcrypto.a
 
-LDFLAGS = -static
+
+CFLAGS = -Wall -Wextra -std=c99
+CFLAGS += -Iinclude/
+CFLAGS += $(MBEDTLS_INC)
+
+LDFLAGS = -static -lc
 
 ifeq ($(DEBUG),1)
-CFLAGS += -O0 -g
+CFLAGS += -O0 -g -DDEBUG
 else
 CFLAGS += -O2
 endif
@@ -19,15 +21,15 @@ endif
 all: build/rpc_server_unix build/rpc_server_tcp build/rpc_server_tcp_tls
 
 ## build/rpc_server_unix: builds unix implementation
-build/rpc_server_unix: build/server_unix.o build/transport_unix.o build/protocol.o build/log.o
+build/rpc_server_unix: build/server_unix.o build/transport_unix.o build/protocol.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
 ## build/rpc_server_tcp: builds tcp implementation
-build/rpc_server_tcp: build/server_tcp.o build/transport_tcp.o build/protocol.o build/log.o
+build/rpc_server_tcp: build/server_tcp.o build/transport_tcp.o build/protocol.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
 ## build/rpc_server_tcp: builds TLS over TCP implementation with mbedtls library
-build/rpc_server_tcp_tls: build/server_tcp_tls.o build/transport_tcp_tls.o build/protocol.o build/log.o
+build/rpc_server_tcp_tls: build/server_tcp_tls.o build/transport_tcp_tls.o build/protocol.o 
 	$(CC) $(LDFLAGS) -o $@ $^ $(MBEDTLS_LIBS)
 
 ## build/server_unix.o: builds server.c defining the TRANSPORT_UNIX symbol
@@ -54,7 +56,7 @@ build:
 
 ## clean: remove builds artifacts
 clean:
-	rm -rf build/*.o build/rpc_server_unix build/rpc_server_tcp
+	rm -rf build/*.o build/rpc_server_unix build/rpc_server_tcp build/rpc_server_tcp_tls
 
 .PHONY: help
 ## help: prints this help message

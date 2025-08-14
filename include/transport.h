@@ -1,6 +1,7 @@
-#ifndef __SERVER_H
+#ifndef __TRANSPORT_H
+#define __TRANSPORT_H
 
-#include "protocol.h"
+#include <stddef.h>
 
 struct transport;
 
@@ -17,9 +18,10 @@ struct transport;
  *                   The type of this struct depends on the transport backend
  *                   (e.g., struct transport_args for TCP/UNIX).
  *
- * @return void
+ * @retval  0   Success
+ * @retval -1   Error
  */
-void transport_init(struct transport **t, const void *args);
+int transport_init(struct transport **t, const void *args);
 
 /**
  * @brief Accept a new client connection if available.
@@ -38,20 +40,29 @@ void transport_init(struct transport **t, const void *args);
  */
 int transport_poll_client(struct transport *t);
 
+/*
+ * @brief Release the client
+ *
+ * Frees the current client. Must be called after every connection
+ *
+ * @param[in,out] t  Pointer to the transport instance.
+ */
+void transport_release_client(struct transport *t);
+
 /**
  * @brief Receive a request from the connected client.
  *
  * Reads a complete `struct request` from the currently connected client.
  * This function blocks until the full request is received or an error occurs.
  *
- * @param[in,out] t  Pointer to the transport instance.
- * @param[out]   r   Pointer to a `struct request` to fill with received data.
- *                   The data will be unmarshalled to host byte order.
+ * @param[in,out] t   Pointer to the transport instance.
+ * @param[out] buf    Pointer to buffer to store received bytes.
+ * @param[in]  len    Number of bytes to read.
  *
  * @retval  0  Request successfully received.
  * @retval -1  An error occurred (including client disconnection).
  */
-int transport_recv(struct transport *t, struct request *r);
+int transport_recv(struct transport *t, void *buf, size_t len);
 
 /**
  * @brief Send a response to the connected client.
@@ -61,12 +72,13 @@ int transport_recv(struct transport *t, struct request *r);
  * sending.
  *
  * @param[in,out] t  Pointer to the transport instance.
- * @param[in]    r   Pointer to the `struct response` to send.
+ * @param[in]  buf   Pointer to buffer containing data to send.
+ * @param[in]  len   Number of bytes to send.
  *
  * @retval  0  Response successfully sent.
  * @retval -1  An error occurred while sending.
  */
-int transport_send(struct transport *t, struct response *r);
+int transport_send(struct transport *t, const void *buf, size_t len);
 
 /**
  * @brief Free transport resources.
@@ -81,4 +93,4 @@ int transport_send(struct transport *t, struct response *r);
  */
 void transport_free(struct transport *t);
 
-#endif // !__SERVER_H
+#endif // !__TRANSPORT_H
