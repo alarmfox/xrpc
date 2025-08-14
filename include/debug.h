@@ -10,10 +10,21 @@
   {}
 #endif
 
+#ifdef DEBUG
+#define _print_err_and_return(fmt, retcode)                                    \
+  {                                                                            \
+    fprintf(stderr, "[XRPC-DEBUG] " fmt "\n");                                 \
+    return retcode;                                                            \
+  }
+#else
+#define _print_err_and_return(fmt, ...)                                        \
+  {}
+#endif
+
 /*
  * Print errno description and return given error code.
  * Usage:
- *    return _print_syscall_err_and_return("bind", XRPC_ERR_BIND);
+ *    _print_syscall_err_and_return("bind", XRPC_ERR_BIND);
  */
 #ifdef DEBUG
 #include <errno.h>

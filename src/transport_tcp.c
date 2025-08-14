@@ -29,10 +29,7 @@ int transport_init(struct transport **s, const void *_args) {
   args->sa.sin_port = htons(args->sa.sin_port);
 
   *s = malloc(sizeof(struct transport));
-  if (!*s) {
-    XRPC_DEBUG_PRINT("malloc");
-    return XRPC_ERR_ALLOC;
-  }
+  if (!*s) _print_err_and_return("malloc error", XRPC_ERR_ALLOC);
 
   t = *s;
 
@@ -104,6 +101,7 @@ void transport_release_client(struct transport *t) {
 }
 
 void transport_free(struct transport *s) {
+  if (!s) return;
   close(s->server_fd);
   free(s);
 }

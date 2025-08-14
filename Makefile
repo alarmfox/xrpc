@@ -6,12 +6,12 @@ MBEDTLS_LIBS = lib/libmbedtls.a lib/libmbedx509.a lib/libmbedcrypto.a
 
 # Classig CFLAGS
 CFLAGS = -Wall -Wextra -std=c99
-CFLAGS += -Iinclude/
+CFLAGS += -Iinclude/ $(MBEDTLS_INC)
 
 LDFLAGS = -static
 
 ifeq ($(DEBUG),1)
-CFLAGS += -O0 -g -DDEBUG $(MBEDTLS_INC)
+CFLAGS += -O0 -g -DDEBUG
 else
 CFLAGS += -O2
 endif
@@ -42,10 +42,6 @@ build/server_tcp.o: src/server.c | build
 ## build/server_tcp_tls.o: builds server.c defining the TRANSPORT_TCP_TLS symbol
 build/server_tcp_tls.o: src/server.c | build
 	$(CC) $(CFLAGS) -DTRANSPORT_TCP_TLS -c -o $@ $<
-
-## build/transport_tcp_tls.o: build transport_tcp_tls with mbedtls include
-build/transport_tcp_tls.o: src/transport_tcp_tls.c | build
-	$(CC) $(MBEDTLS_INC) $(CFLAGS) -c -o $@ $<
 
 build/%.o: src/%.c | build
 	$(CC) $(CFLAGS) -c -o $@ $<

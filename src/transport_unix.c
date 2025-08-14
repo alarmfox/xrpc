@@ -26,10 +26,7 @@ int transport_init(struct transport **s, const void *_args) {
   struct transport *t = NULL;
   // alloc the server
   *s = malloc(sizeof(struct transport));
-  if (!*s) {
-    XRPC_DEBUG_PRINT("malloc");
-    return XRPC_ERR_ALLOC;
-  }
+  if (!*s) _print_err_and_return("malloc error", XRPC_ERR_ALLOC);
 
   t = *s;
 
@@ -104,7 +101,8 @@ void transport_release_client(struct transport *t) {
   if (t->client_fd > 0) close(t->client_fd);
 }
 
-void transport_free(struct transport *s) {
-  close(s->server_fd);
-  free(s);
+void transport_free(struct transport *t) {
+  if (!t) return;
+  close(t->server_fd);
+  free(t);
 }

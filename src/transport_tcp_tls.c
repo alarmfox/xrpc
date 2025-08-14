@@ -52,10 +52,7 @@ int transport_init(struct transport **s, const void *_args) {
 
   *s = malloc(sizeof(struct transport));
 
-  if (!*s) {
-    XRPC_DEBUG_PRINT("malloc");
-    return XRPC_ERR_ALLOC;
-  }
+  if (!*s) _print_err_and_return("malloc error", XRPC_ERR_ALLOC);
 
   t = *s;
 
@@ -154,15 +151,15 @@ int transport_recv(struct transport *t, void *b, size_t l) {
     if (n <= 0) {
       switch (n) {
       case MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY:
-        XRPC_DEBUG_PRINT("connection closed by the peer");
-        return XRPC_ERR_READ_CONN_CLOSED;
+        _print_err_and_return("connection closed by the peer",
+                              XRPC_ERR_READ_CONN_CLOSED);
 
       case MBEDTLS_ERR_NET_CONN_RESET:
-        XRPC_DEBUG_PRINT("connection reset by the peer");
-        return XRPC_ERR_READ_CONN_CLOSED;
+        _print_err_and_return("connection reset by the peer",
+                              XRPC_ERR_READ_CONN_CLOSED);
 
       case 0:
-        return XRPC_ERR_READ_CONN_CLOSED;
+        _print_err_and_return("connection closed", XRPC_ERR_READ_CONN_CLOSED);
 
       default:
         _print_mbedtls_err_and_return("mbedtls_ssl_read", (int)n,
@@ -183,9 +180,9 @@ int transport_send(struct transport *t, const void *b, size_t l) {
 
   unsigned char *tmp = (unsigned char *)b;
 
-  while ((n = mbedtls_ssl_write(&t->ssl, tmp, l)) <= 0) {
+  while ((n = mbedtls_ssl_write(&t->ssl, tmp, l)) <= 0)
     _print_mbedtls_err_and_return("mbedtls_ssl_write", n, XRPC_ERR_WRITE);
-  }
+
   return XRPC_SUCCESS;
 }
 
@@ -203,13 +200,14 @@ void transport_release_client(struct transport *t) {
   mbedtls_ssl_session_reset(&t->ssl);
 }
 
-void transport_free(struct transport *s) {
-  mbedtls_net_free(&s->server_fd);
-  mbedtls_net_free(&s->client_fd);
-  mbedtls_ssl_free(&s->ssl);
-  mbedtls_ssl_config_free(&s->conf);
-  mbedtls_ctr_drbg_free(&s->ctr_drbg);
-  mbedtls_entropy_free(&s->entropy);
+void transport_free(struct transport *t) {
+  if (!t) return;
+  mbedtls_net_free(&t->server_fd);
+  mbedtls_net_free(&t->client_fd);
+  mbedtls_ssl_free(&t->ssl);
+  mbedtls_ssl_config_free(&t->conf);
+  mbedtls_ctr_drbg_free(&t->ctr_drbg);
+  mbedtls_entropy_free(&t->entropy);
 
-  free(s);
+  free(t);
 }
