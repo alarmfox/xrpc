@@ -84,7 +84,8 @@ int transport_recv(struct transport *t, void *b, size_t s) {
 }
 
 int transport_send(struct transport *t, const void *b, size_t l) {
-  size_t tot_write = 0, n;
+  size_t tot_write = 0;
+  ssize_t n;
   unsigned char *tmp = (unsigned char *)b;
 
   do {
@@ -98,9 +99,7 @@ int transport_send(struct transport *t, const void *b, size_t l) {
   return XRPC_SUCCESS;
 }
 
-void transport_release_client(struct transport *t) {
-  if (t->client_fd > 0) close(t->client_fd);
-}
+void transport_release_client(struct transport *t) { close(t->client_fd); }
 
 void transport_free(struct transport *s) {
   if (!s) return;
