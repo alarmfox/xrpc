@@ -13,6 +13,17 @@ MAX_REPETITONS: int = 100
 OP_SUM: int = 0
 
 
+def recvall(sock, n):
+    # Helper function to recv n bytes or return None if EOF is hit
+    data = bytearray()
+    while len(data) < n:
+        packet = sock.recv(n - len(data))
+        if not packet:
+            return None
+        data.extend(packet)
+    return data
+
+
 def test(s: socket.socket) -> None:
     for _ in range(MAX_REPETITONS):
         a = random.randint(0, 10)
@@ -21,25 +32,20 @@ def test(s: socket.socket) -> None:
 
         # send header
         header = struct.pack("iiQ", OP_SUM, 8 + 8, id)
-        s.sendall(header)
 
         # send packet
         data = struct.pack("QQ", a, b)
 
-        s.sendall(data)
+        s.sendall(header + data)
 
         # receive response header
-        res = s.recv(4 + 4 + 8 + 1)
-        res = struct.unpack("iiQB", res)
-        assert res[0] == 0, "request operation does not math"
+        res = recvall(s, 4 + 4 + 8 + 1 + 8)
+        res = struct.unpack("=iiQBQ", res)
+        assert res[0] == OP_SUM, "request operation does not math"
         assert res[1] == 8, "response size must be 8"
         assert res[2] == id, "request id does not match"
         assert res[3] == 0x1, "response status must be 0x1 (SUCCESS)"
-
-        # receive the response packet
-        res = s.recv(8)
-        res = struct.unpack("Q", res)
-        assert res[0] == a + b, f"sum is not correct: {a}+{b} = {a + b}; got {res[0]}"
+        assert res[4] == a + b, f"sum is not correct: {a}+{b} = {a + b}; got {res[4]}"
 
 
 def unix() -> None:
