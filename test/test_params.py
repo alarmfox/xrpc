@@ -45,7 +45,6 @@ def tls() -> None:
 
     with socket.create_connection((SERVER_ADDRESS, SERVER_PORT_TLS)) as sock:
         with context.wrap_socket(sock, server_hostname="localhost") as ssock:
-            print(ssock.version)
             test(ssock)
 
 
