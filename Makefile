@@ -8,7 +8,7 @@ MBEDTLS_LIBS = lib/libmbedtls.a lib/libmbedx509.a lib/libmbedcrypto.a
 CFLAGS = -Wall -Wextra -std=c99
 CFLAGS += -Iinclude/
 
-LDFLAGS = -static -lc
+LDFLAGS = -static
 
 ifeq ($(DEBUG),1)
 CFLAGS += -O0 -g -DDEBUG $(MBEDTLS_INC)
