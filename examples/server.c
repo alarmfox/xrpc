@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,12 +6,18 @@
 #include "xrpc_server.h"
 
 #define OP_SUM 0x0
+#define OP_DOT_PROD 0x1
 
 /*
  * For demonstration purposes this sums just 2 uint64_t.
  */
 int sum_handler(const struct xrpc_request *req, struct xrpc_response *res) {
-  assert(req->hdr->sz == 16);
+  if (req->hdr->sz != 16) {
+    res->hdr->status = XRPC_RESPONSE_INVALID_PARAMS;
+    res->hdr->sz = 0;
+
+    return XRPC_SUCCESS;
+  }
   uint64_t *p = (uint64_t *)req->data;
 
   uint64_t op1 = *p++;
@@ -21,11 +26,48 @@ int sum_handler(const struct xrpc_request *req, struct xrpc_response *res) {
   unsigned char *b = (unsigned char *)&c;
   unsigned char *resp_buf = (unsigned char *)res->data;
 
-  for (int i = 0; i < 8; ++i) {
+  for (size_t i = 0; i < sizeof(uint64_t); ++i) {
     resp_buf[i] = *b++;
   }
 
-  res->hdr->sz = 8;
+  res->hdr->sz = sizeof(uint64_t);
+
+  return XRPC_SUCCESS;
+}
+
+/*
+ * Performs the dot product between two arrays.
+ * Arrays are sent one after the other. The array size must req->hdr->sz / 2
+ * For now assume uint64_t arrays. Since req->hdr->sz is bytes, to get the
+ * number of elements we need to divide by the sizeof(type)
+ */
+int dot_product_handler(const struct xrpc_request *req,
+                        struct xrpc_response *res) {
+
+  // We cannot construct 2 arrays from an odd size
+  if (req->hdr->sz % (2 * sizeof(uint64_t)) != 0) {
+    res->hdr->status = XRPC_RESPONSE_INVALID_PARAMS;
+    res->hdr->sz = 0;
+
+    return XRPC_SUCCESS;
+  }
+
+  size_t arr_sz = req->hdr->sz / (2 * sizeof(uint64_t));
+  uint64_t *p = (uint64_t *)req->data;
+  uint64_t prod = 0;
+  unsigned char *b = (unsigned char *)&prod;
+  unsigned char *resp = (unsigned char *)res->data;
+
+  for (size_t i = 0; i < arr_sz; i++) {
+    prod += p[i] * p[i + arr_sz];
+  }
+
+  res->hdr->status = XRPC_RESPONSE_SUCCESS;
+  res->hdr->sz = sizeof(uint64_t);
+
+  for (size_t i = 0; i < sizeof(uint64_t); ++i) {
+    resp[i] = b[i];
+  }
 
   return XRPC_SUCCESS;
 }
@@ -106,7 +148,13 @@ int main(void) {
 
   if (xrpc_server_register(rs, OP_SUM, sum_handler, XRPC_RF_OVERWRITE) !=
       XRPC_SUCCESS) {
-    printf("cannot register handlers\n");
+    printf("cannot register sum handler\n");
+    goto exit;
+  }
+
+  if (xrpc_server_register(rs, OP_DOT_PROD, dot_product_handler,
+                           XRPC_RF_OVERWRITE) != XRPC_SUCCESS) {
+    printf("cannot register dot product handler\n");
     goto exit;
   }
 
@@ -114,9 +162,7 @@ int main(void) {
 
 exit:
   xrpc_server_free(rs);
-  rs = NULL;
   transport_free(t);
-  t = NULL;
 
   return 0;
 }
