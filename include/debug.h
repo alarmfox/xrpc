@@ -12,9 +12,8 @@
 
 #ifdef DEBUG
 #define _print_err_and_return(fmt, retcode)                                    \
-  {                                                                            \
-    fprintf(stderr, "[XRPC-DEBUG] " fmt "\n");                                 \
-    return retcode;                                                            \
+  fprintf(stderr, "[XRPC-DEBUG] " fmt "\n");                                   \
+  return retcode;                                                              \
   }
 #else
 #define _print_err_and_return(fmt, ...)                                        \
