@@ -1,19 +1,40 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "error.h"
-#include "protocol.h"
-#include "transport.h"
+#include "xrpc_server.h"
 
 #define OP_SUM 0x0
 
-uint64_t op_sum(uint64_t a, uint64_t b) { return a + b; }
+/*
+ * For demonstration purposes this sums just 2 uint64_t.
+ */
+int sum_handler(const struct xrpc_request *r) {
+  assert(r->len == 16);
+  uint64_t *p = (uint64_t *)r->data;
+
+  uint64_t op1 = *p++;
+  uint64_t op2 = *p;
+  uint64_t res = op1 + op2;
+  unsigned char *b = (unsigned char *)&res;
+  unsigned char *resp_buf = (unsigned char *)r->resp_buf;
+
+  for (int i = 0; i < 8; ++i) {
+    resp_buf[i] = *b++;
+  }
+
+  *r->resp_len = 8;
+
+  return XRPC_SUCCESS;
+}
 
 #ifdef TRANSPORT_UNIX
 #define UNIX_SOCKET_PATH "/tmp/xrpc.sock"
 const char *log_prefix = "rpc_server_unix";
 
+#include <sys/socket.h>
 #include <sys/un.h>
 static struct transport_args {
   struct sockaddr_un sa;
@@ -21,6 +42,8 @@ static struct transport_args {
 #endif /* if TRANSPORT_UNIX */
 
 #ifdef TRANSPORT_TCP
+#include <netinet/in.h>
+#include <sys/socket.h>
 const char *log_prefix = "rpc_server_tcp";
 
 static struct transport_args {
@@ -38,6 +61,8 @@ static struct transport_args {
 #endif /* if TRANSPORT_TCP */
 
 #ifdef TRANSPORT_TCP_TLS
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 #define CRT_PATH "certs/certificate.crt"
 #define KEY_PATH "certs/pkey"
@@ -66,42 +91,29 @@ static struct transport_args {
 #endif /* if TRANSPORT_TCP_TLS */
 
 int main() {
-  int ret;
   struct transport *t = NULL;
-  struct rpc_server *rs = NULL;
-  struct request req;
-  struct response res;
-
-  rpc_server_init(&rs);
-  ret = rpc_server_register_handler(rs, OP_SUM, op_sum, RF_OVERWRITE);
-
-  if (ret < 0) {
-    printf("cannot register handler\n");
-    goto exit;
-  }
+  struct xrpc_server *rs = NULL;
 
   if (transport_init(&t, (void *)&args) != XRPC_SUCCESS) {
     printf("cannot create transport server\n");
     goto exit;
   }
 
-  while (transport_poll_client(t) == 0) {
-    while (transport_recv(t, (void *)&req, sizeof(struct request)) ==
-           XRPC_SUCCESS) {
-      unmarshal_req(&req);
-      rpc_server_handle_req(rs, &req, &res);
-      marshal_res(&res);
-      transport_send(t, (const void *)&res, sizeof(struct response));
-
-      memset(&req, 0, sizeof(struct request));
-      memset(&res, 0, sizeof(struct response));
-    }
-
-    transport_release_client(t);
+  if (xrpc_server_create(&rs, t, 10) != XRPC_SUCCESS) {
+    printf("cannot create xrpc_server\n");
+    goto exit;
   }
 
+  if (xrpc_server_register(rs, OP_SUM, sum_handler, XRPC_RF_OVERWRITE) !=
+      XRPC_SUCCESS) {
+    printf("cannot register handlers\n");
+    goto exit;
+  }
+
+  while (xrpc_server_poll(rs) == 0) {}
+
 exit:
-  rpc_server_free(rs);
+  xrpc_server_free(rs);
   rs = NULL;
   transport_free(t);
   t = NULL;

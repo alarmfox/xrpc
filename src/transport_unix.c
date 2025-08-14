@@ -26,7 +26,7 @@ int transport_init(struct transport **s, const void *_args) {
   struct transport *t = NULL;
   // alloc the server
   *s = malloc(sizeof(struct transport));
-  if (!*s) _print_err_and_return("malloc error", XRPC_ERR_ALLOC);
+  if (!*s) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
 
   t = *s;
 
@@ -34,17 +34,17 @@ int transport_init(struct transport **s, const void *_args) {
   strncpy(addr.sun_path, args->sa.sun_path, sizeof(args->sa.sun_path));
 
   if (fd = socket(AF_UNIX, SOCK_STREAM, 0), fd < 0)
-    _print_syscall_err_and_return("socket", XRPC_ERR_SOCKET);
+    _print_syscall_err_and_return("socket", XRPC_TRANSPORT_ERR_SOCKET);
 
   ret = unlink(args->sa.sun_path);
   if (ret < 0 && errno != ENOENT)
-    _print_syscall_err_and_return("unlink", XRPC_ERR_UNLINK);
+    _print_syscall_err_and_return("unlink", XRPC_TRANSPORT_ERR_UNLINK);
 
   ret = bind(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_un));
-  if (ret < 0) _print_syscall_err_and_return("bind", XRPC_ERR_BIND);
+  if (ret < 0) _print_syscall_err_and_return("bind", XRPC_TRANSPORT_ERR_BIND);
 
   if (ret = listen(fd, BACKLOG), ret < 0)
-    _print_syscall_err_and_return("listen", XRPC_ERR_LISTEN);
+    _print_syscall_err_and_return("listen", XRPC_TRANSPORT_ERR_LISTEN);
 
   t->server_fd = fd;
   t->client_fd = -1;
@@ -57,7 +57,8 @@ int transport_poll_client(struct transport *t) {
   int client_fd;
 
   client_fd = accept(t->server_fd, 0, 0);
-  if (client_fd < 0) _print_syscall_err_and_return("accept", XRPC_ERR_ACCEPT);
+  if (client_fd < 0)
+    _print_syscall_err_and_return("accept", XRPC_TRANSPORT_ERR_ACCEPT);
 
   t->client_fd = client_fd;
   return XRPC_SUCCESS;
@@ -71,10 +72,10 @@ int transport_recv(struct transport *t, void *b, size_t l) {
 
   do {
     n = read(t->client_fd, tmp + tot_read, l - tot_read);
-    if (n == 0) return XRPC_ERR_READ_CONN_CLOSED;
+    if (n == 0) return XRPC_TRANSPORT_ERR_READ_CONN_CLOSED;
     if (n < 0) {
       if (errno == EINTR) continue;
-      _print_syscall_err_and_return("read", XRPC_ERR_READ);
+      _print_syscall_err_and_return("read", XRPC_TRANSPORT_ERR_READ);
     }
 
     tot_read += n;
@@ -89,7 +90,8 @@ int transport_send(struct transport *t, const void *b, size_t l) {
 
   do {
     n = write(t->client_fd, tmp + tot_write, l - tot_write);
-    if (n <= 0) _print_syscall_err_and_return("write", XRPC_ERR_WRITE);
+    if (n <= 0)
+      _print_syscall_err_and_return("write", XRPC_TRANSPORT_ERR_WRITE);
 
     tot_write += n;
   } while (tot_write < l);

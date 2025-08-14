@@ -5,6 +5,7 @@
 !/.gitignore
 !/Makefile
 !/README.md
+!/examples
 !/include
 !/src
 !/test

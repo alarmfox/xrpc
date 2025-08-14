@@ -29,20 +29,20 @@ int transport_init(struct transport **s, const void *_args) {
   args->sa.sin_port = htons(args->sa.sin_port);
 
   *s = malloc(sizeof(struct transport));
-  if (!*s) _print_err_and_return("malloc error", XRPC_ERR_ALLOC);
+  if (!*s) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
 
   t = *s;
 
   if (fd = socket(AF_INET, SOCK_STREAM, 0), fd < 0)
-    _print_syscall_err_and_return("socket", XRPC_ERR_SOCKET);
+    _print_syscall_err_and_return("socket", XRPC_TRANSPORT_ERR_SOCKET);
 
   ret = bind(fd, (const struct sockaddr *)&(args->sa),
              sizeof(struct sockaddr_in));
 
-  if (ret < 0) _print_syscall_err_and_return("bind", XRPC_ERR_BIND);
+  if (ret < 0) _print_syscall_err_and_return("bind", XRPC_TRANSPORT_ERR_BIND);
 
   if (ret = listen(fd, BACKLOG), ret < 0)
-    _print_syscall_err_and_return("listen", XRPC_ERR_LISTEN);
+    _print_syscall_err_and_return("listen", XRPC_TRANSPORT_ERR_LISTEN);
 
   t->server_fd = fd;
   t->client_fd = -1;
@@ -57,7 +57,8 @@ int transport_poll_client(struct transport *t) {
   socklen_t client_len = sizeof(struct sockaddr_in);
 
   client_fd = accept(t->server_fd, (struct sockaddr *)&client, &client_len);
-  if (client_fd < 0) _print_syscall_err_and_return("accept", XRPC_ERR_ACCEPT);
+  if (client_fd < 0)
+    _print_syscall_err_and_return("accept", XRPC_TRANSPORT_ERR_ACCEPT);
 
   t->client_fd = client_fd;
 
@@ -71,10 +72,10 @@ int transport_recv(struct transport *t, void *b, size_t s) {
 
   do {
     n = read(t->client_fd, tmp + tot_read, s - tot_read);
-    if (n == 0) return XRPC_ERR_READ_CONN_CLOSED;
+    if (n == 0) return XRPC_TRANSPORT_ERR_READ_CONN_CLOSED;
     if (n < 0) {
       if (errno == EINTR) continue;
-      _print_syscall_err_and_return("read", XRPC_ERR_READ);
+      _print_syscall_err_and_return("read", XRPC_TRANSPORT_ERR_READ);
     }
     tot_read += n;
   } while (tot_read < s);
@@ -88,7 +89,8 @@ int transport_send(struct transport *t, const void *b, size_t l) {
 
   do {
     n = write(t->client_fd, tmp + tot_write, l - tot_write);
-    if (n <= 0) _print_syscall_err_and_return("write", XRPC_ERR_WRITE);
+    if (n <= 0)
+      _print_syscall_err_and_return("write", XRPC_TRANSPORT_ERR_WRITE);
 
     tot_write += n;
   } while (tot_write < l);

@@ -4,45 +4,59 @@
 /*
  * Every call returns 0 as success
  */
+
 #define XRPC_SUCCESS 0
 
 /*
- * Generic errors can be returned from any backend
- * From -1 to -99
+ * RPC API Server errors
+ *
+ * From -1 to - 99
  */
-#define XRPC_ERR_SOCKET -1
-#define XRPC_ERR_BIND -2
-#define XRPC_ERR_LISTEN -3
-#define XRPC_ERR_ACCEPT -4
-#define XRPC_ERR_READ_CONN_CLOSED -5
-#define XRPC_ERR_READ -5
-#define XRPC_ERR_WRITE -6
-#define XRPC_ERR_ALLOC -7
-#define XRPC_ERR_ADDRESS -8
+
+#define XRPC_API_ERR_ALLOC -1
+#define XRPC_API_ERR_BAD_OPID -2
+#define XRPC_API_HANDLER_ALREADY_REGISTERED -3
+
+/*
+ * Transport related errors
+ */
+
+/*
+ * Generic errors can be returned from any transport backend
+ * From -100 to -199
+ */
+#define XRPC_TRANSPORT_ERR_SOCKET -100
+#define XRPC_TRANSPORT_ERR_BIND -101
+#define XRPC_TRANSPORT_ERR_LISTEN -102
+#define XRPC_TRANSPORT_ERR_ACCEPT -103
+#define XRPC_TRANSPORT_ERR_READ_CONN_CLOSED -104
+#define XRPC_TRANSPORT_ERR_READ -105
+#define XRPC_TRANSPORT_ERR_WRITE -106
+#define XRPC_TRANSPORT_ERR_ADDRESS -107
 
 /*
  * Unix socket specific errors
  *
- * From -100 to -199
+ * From -200  to -299
  */
-#define XRPC_ERR_UNLINK -100
+#define XRPC_TRANSPORT_ERR_UNLINK -200
 
 /*
  * TCP socket specific errors
  *
- * From -200 to -299
+ * From -300 to -399
  */
 
 /*
  * (mbed)TLS specific errors
  *
- * From -300 to -399
+ * From -400 to -499
  */
-#define XRPC_ERR_HANDSHAKE_FAILED -300
-#define XRPC_ERR_INVALID_CERTIFICATE -301
-#define XRPC_ERR_INVALID_KEY -302
-#define XRPC_ERR_INVALID_SEED -303
-#define XRPC_ERR_INVALID_SSL_CONFIG -304
-#define XRPC_ERR_SSL_SETUP_FAILED -304
+#define XRPC_TRANSPORT_ERR_HANDSHAKE_FAILED -400
+#define XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE -401
+#define XRPC_TRANSPORT_ERR_INVALID_KEY -402
+#define XRPC_TRANSPORT_ERR_INVALID_SEED -403
+#define XRPC_TRANSPORT_ERR_INVALID_SSL_CONFIG -404
+#define XRPC_TRANSPORT_ERR_SSL_SETUP_FAILED -405
 
 #endif // !__ERROR_H

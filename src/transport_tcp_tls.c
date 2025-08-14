@@ -52,14 +52,14 @@ int transport_init(struct transport **s, const void *_args) {
 
   *s = malloc(sizeof(struct transport));
 
-  if (!*s) _print_err_and_return("malloc error", XRPC_ERR_ALLOC);
+  if (!*s) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
 
   t = *s;
 
   // convert address and port to string
   snprintf(port, sizeof(port), "%d", args->sa.sin_port);
   if (!inet_ntop(AF_INET, &(args->sa.sin_addr), addr, INET_ADDRSTRLEN)) {
-    _print_syscall_err_and_return("inet_ntop", XRPC_ERR_ADDRESS);
+    _print_syscall_err_and_return("inet_ntop", XRPC_TRANSPORT_ERR_ADDRESS);
   }
 
   // init block
@@ -77,22 +77,23 @@ int transport_init(struct transport **s, const void *_args) {
 
   if (ret != 0)
     _print_mbedtls_err_and_return("mbedtls_ctr_drbg_seed", ret,
-                                  XRPC_ERR_INVALID_SEED);
+                                  XRPC_TRANSPORT_ERR_INVALID_SEED);
 
   ret = mbedtls_x509_crt_parse_file(&t->srvcert, args->cert_path);
   if (ret != 0)
     _print_mbedtls_err_and_return("mbedtls_x509_crt_parse_file", ret,
-                                  XRPC_ERR_INVALID_CERTIFICATE);
+                                  XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE);
 
   ret = mbedtls_pk_parse_keyfile(&t->pkey, args->key_path, NULL, 0, 0);
   if (ret != 0)
     _print_mbedtls_err_and_return("mbedtls_pk_parse_keyfile", ret,
-                                  XRPC_ERR_INVALID_KEY);
+                                  XRPC_TRANSPORT_ERR_INVALID_KEY);
 
   ret = mbedtls_net_bind(&t->server_fd, addr, port, MBEDTLS_NET_PROTO_TCP);
 
   if (ret != 0)
-    _print_mbedtls_err_and_return("mbedtls_net_bind", ret, XRPC_ERR_BIND);
+    _print_mbedtls_err_and_return("mbedtls_net_bind", ret,
+                                  XRPC_TRANSPORT_ERR_BIND);
 
   ret = mbedtls_ssl_config_defaults(&t->conf, MBEDTLS_SSL_IS_SERVER,
                                     MBEDTLS_SSL_TRANSPORT_STREAM,
@@ -100,18 +101,18 @@ int transport_init(struct transport **s, const void *_args) {
 
   if (ret != 0)
     _print_mbedtls_err_and_return("mbedtls_ssl_config_defaults", ret,
-                                  XRPC_ERR_INVALID_SSL_CONFIG);
+                                  XRPC_TRANSPORT_ERR_INVALID_SSL_CONFIG);
 
   mbedtls_ssl_conf_rng(&t->conf, mbedtls_ctr_drbg_random, &t->ctr_drbg);
   mbedtls_ssl_conf_ca_chain(&t->conf, t->srvcert.next, NULL);
 
   if ((ret = mbedtls_ssl_conf_own_cert(&t->conf, &t->srvcert, &t->pkey)) != 0)
     _print_mbedtls_err_and_return("mbedtls_ssl_conf_own_cert", ret,
-                                  XRPC_ERR_INVALID_CERTIFICATE);
+                                  XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE);
 
   if ((ret = mbedtls_ssl_setup(&t->ssl, &t->conf)) != 0)
     _print_mbedtls_err_and_return("mbedtls_ssl_setup", ret,
-                                  XRPC_ERR_SSL_SETUP_FAILED);
+                                  XRPC_TRANSPORT_ERR_SSL_SETUP_FAILED);
 
   return XRPC_SUCCESS;
 }
@@ -123,7 +124,8 @@ int transport_poll_client(struct transport *t) {
   ret = mbedtls_net_accept(&t->server_fd, &t->client_fd, NULL, 0, NULL);
 
   if (ret != 0)
-    _print_mbedtls_err_and_return("mbedtls_net_accept", ret, XRPC_ERR_ACCEPT);
+    _print_mbedtls_err_and_return("mbedtls_net_accept", ret,
+                                  XRPC_TRANSPORT_ERR_ACCEPT);
 
   mbedtls_ssl_set_bio(&t->ssl, &t->client_fd, mbedtls_net_send,
                       mbedtls_net_recv, NULL);
@@ -131,7 +133,7 @@ int transport_poll_client(struct transport *t) {
   while ((ret = mbedtls_ssl_handshake(&t->ssl)) != 0) {
     if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
       _print_mbedtls_err_and_return("mbedtls_ssl_handshake", ret,
-                                    XRPC_ERR_HANDSHAKE_FAILED);
+                                    XRPC_TRANSPORT_ERR_HANDSHAKE_FAILED);
     }
   }
 
@@ -152,18 +154,19 @@ int transport_recv(struct transport *t, void *b, size_t l) {
       switch (n) {
       case MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY:
         _print_err_and_return("connection closed by the peer",
-                              XRPC_ERR_READ_CONN_CLOSED);
+                              XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
 
       case MBEDTLS_ERR_NET_CONN_RESET:
         _print_err_and_return("connection reset by the peer",
-                              XRPC_ERR_READ_CONN_CLOSED);
+                              XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
 
       case 0:
-        _print_err_and_return("connection closed", XRPC_ERR_READ_CONN_CLOSED);
+        _print_err_and_return("connection closed",
+                              XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
 
       default:
         _print_mbedtls_err_and_return("mbedtls_ssl_read", (int)n,
-                                      XRPC_ERR_READ);
+                                      XRPC_TRANSPORT_ERR_READ);
       }
 
       break;
@@ -181,7 +184,8 @@ int transport_send(struct transport *t, const void *b, size_t l) {
   unsigned char *tmp = (unsigned char *)b;
 
   while ((n = mbedtls_ssl_write(&t->ssl, tmp, l)) <= 0)
-    _print_mbedtls_err_and_return("mbedtls_ssl_write", n, XRPC_ERR_WRITE);
+    _print_mbedtls_err_and_return("mbedtls_ssl_write", n,
+                                  XRPC_TRANSPORT_ERR_WRITE);
 
   return XRPC_SUCCESS;
 }
