@@ -11,7 +11,7 @@
 uint64_t op_sum(uint64_t a, uint64_t b) { return a + b; }
 
 #ifdef TRANSPORT_UNIX
-#define UNIX_SOCKET_PATH "/tmp/rpc.sock"
+#define UNIX_SOCKET_PATH "/tmp/xrpc.sock"
 const char *log_prefix = "rpc_server_unix";
 
 #include <sys/un.h>
@@ -71,15 +71,19 @@ int main() {
   struct rpc_server *rs = NULL;
   struct request req;
   struct response res;
+
   rpc_server_init(&rs);
   ret = rpc_server_register_handler(rs, OP_SUM, op_sum, RF_OVERWRITE);
 
   if (ret < 0) {
     printf("cannot register handler\n");
-    exit(EXIT_FAILURE);
+    goto exit;
   }
 
-  if (transport_init(&t, (void *)&args) != XRPC_SUCCESS) return 1;
+  if (transport_init(&t, (void *)&args) != XRPC_SUCCESS) {
+    printf("cannot create transport server\n");
+    goto exit;
+  }
 
   while (transport_poll_client(t) == 0) {
     while (transport_recv(t, (void *)&req, sizeof(struct request)) ==
@@ -96,6 +100,7 @@ int main() {
     transport_release_client(t);
   }
 
+exit:
   rpc_server_free(rs);
   rs = NULL;
   transport_free(t);

@@ -4,7 +4,7 @@ import struct
 import sys
 import ssl
 
-UNIX_SOCKET_PATH: str = "/tmp/rpc.sock"
+UNIX_SOCKET_PATH: str = "/tmp/xrpc.sock"
 SERVER_ADDRESS: str = "localhost"
 SERVER_PORT_TCP: int = 9000
 SERVER_PORT_TLS: int = 9001
