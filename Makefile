@@ -4,15 +4,14 @@ CC ?= gcc
 MBEDTLS_INC = -Iexternal/mbedtls/include
 MBEDTLS_LIBS = lib/libmbedtls.a lib/libmbedx509.a lib/libmbedcrypto.a
 
-
+# Classig CFLAGS
 CFLAGS = -Wall -Wextra -std=c99
 CFLAGS += -Iinclude/
-CFLAGS += $(MBEDTLS_INC)
 
 LDFLAGS = -static -lc
 
 ifeq ($(DEBUG),1)
-CFLAGS += -O0 -g -DDEBUG
+CFLAGS += -O0 -g -DDEBUG $(MBEDTLS_INC)
 else
 CFLAGS += -O2
 endif
