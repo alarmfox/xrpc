@@ -21,7 +21,7 @@ struct transport_args {
   struct sockaddr_in sa;
 };
 
-int transport_init(struct transport **s, const void *_args) {
+int transport_server_init(struct transport **s, const void *_args) {
   int ret, fd;
   struct transport_args *args = (struct transport_args *)_args;
   struct transport *t = NULL;

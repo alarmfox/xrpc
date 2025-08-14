@@ -37,7 +37,7 @@ struct transport {
   mbedtls_pk_context pkey;
 };
 
-int transport_init(struct transport **s, const void *_args) {
+int transport_server_init(struct transport **s, const void *_args) {
   int ret;
   const char *pers = "ssl_server";
   struct transport_args *args = (struct transport_args *)_args;

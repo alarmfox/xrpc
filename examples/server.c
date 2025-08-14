@@ -74,7 +74,6 @@ int dot_product_handler(const struct xrpc_request *req,
 
 #ifdef TRANSPORT_UNIX
 #define UNIX_SOCKET_PATH "/tmp/xrpc.sock"
-const char *log_prefix = "rpc_server_unix";
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -86,7 +85,6 @@ static struct transport_args {
 #ifdef TRANSPORT_TCP
 #include <netinet/in.h>
 #include <sys/socket.h>
-const char *log_prefix = "rpc_server_tcp";
 
 static struct transport_args {
   struct sockaddr_in sa;
@@ -108,8 +106,6 @@ static struct transport_args {
 
 #define CRT_PATH "certs/certificate.crt"
 #define KEY_PATH "certs/pkey"
-
-const char *log_prefix = "rpc_server_tcp_tls";
 
 static struct transport_args {
   struct sockaddr_in sa;
@@ -136,7 +132,7 @@ int main(void) {
   struct transport *t = NULL;
   struct xrpc_server *rs = NULL;
 
-  if (transport_init(&t, (void *)&args) != XRPC_SUCCESS) {
+  if (transport_server_init(&t, (void *)&args) != XRPC_SUCCESS) {
     printf("cannot create transport server\n");
     goto exit;
   }

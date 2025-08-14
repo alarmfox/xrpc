@@ -6,7 +6,7 @@
 struct transport;
 
 /**
- * @brief Initialize a transport instance.
+ * @brief Initialize a transport instance for a server.
  *
  * This function allocates and initializes the transport backend for a given
  * implementation (TCP, UNIX socket, TLS, etc.). It sets up the listening
@@ -21,7 +21,24 @@ struct transport;
  * @retval  0   Success
  * @retval -1   Error
  */
-int transport_init(struct transport **t, const void *args);
+int transport_server_init(struct transport **t, const void *args);
+
+/**
+ * @brief Initialize a transport instance for a client.
+ *
+ * This function allocates and initializes the transport connection for a given
+ * implementation (TCP, UNIX socket, TLS, etc.).  *
+ *
+ * @param[out] t     Pointer to a transport pointer to be allocated and
+ * initialized.
+ * @param[in]  args  Pointer to a transport-specific configuration struct.
+ *                   The type of this struct depends on the transport backend
+ *                   (e.g., struct transport_args for TCP/UNIX).
+ *
+ * @retval  0   Success
+ * @retval -1   Error
+ */
+int transport_client_init(struct transport **t, const void *args);
 
 /**
  * @brief Accept a new client connection if available.
@@ -86,9 +103,7 @@ int transport_send(struct transport *t, const void *buf, size_t len);
  * Closes any active client and listening sockets, releases all allocated
  * memory, and resets the transport pointer.
  *
- * @param[in,out] t  Pointer to the transport instance to free. Will be set to
- * NULL.
- *
+ * @param[in,out] t  Pointer to the transport instance to free.
  * @return void
  */
 void transport_free(struct transport *t);
