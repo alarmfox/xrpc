@@ -11,21 +11,21 @@
 /*
  * For demonstration purposes this sums just 2 uint64_t.
  */
-int sum_handler(const struct xrpc_request *r) {
-  assert(r->len == 16);
-  uint64_t *p = (uint64_t *)r->data;
+int sum_handler(const struct xrpc_request *req, struct xrpc_response *res) {
+  assert(req->hdr->sz == 16);
+  uint64_t *p = (uint64_t *)req->data;
 
   uint64_t op1 = *p++;
   uint64_t op2 = *p;
-  uint64_t res = op1 + op2;
-  unsigned char *b = (unsigned char *)&res;
-  unsigned char *resp_buf = (unsigned char *)r->resp_buf;
+  uint64_t c = op1 + op2;
+  unsigned char *b = (unsigned char *)&c;
+  unsigned char *resp_buf = (unsigned char *)res->data;
 
   for (int i = 0; i < 8; ++i) {
     resp_buf[i] = *b++;
   }
 
-  *r->resp_len = 8;
+  res->hdr->sz = 8;
 
   return XRPC_SUCCESS;
 }
@@ -60,7 +60,7 @@ static struct transport_args {
 
 #endif /* if TRANSPORT_TCP */
 
-#ifdef TRANSPORT_TCP_TLS
+#ifdef TRANSPORT_TLS
 #include <netinet/in.h>
 #include <sys/socket.h>
 
@@ -88,9 +88,9 @@ static struct transport_args {
     .key_path = KEY_PATH,
 };
 
-#endif /* if TRANSPORT_TCP_TLS */
+#endif /* if TRANSPORT_TLS */
 
-int main() {
+int main(void) {
   struct transport *t = NULL;
   struct xrpc_server *rs = NULL;
 
