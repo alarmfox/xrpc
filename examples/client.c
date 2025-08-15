@@ -61,22 +61,27 @@ static struct transport_args {
 
 #endif /* if TRANSPORT_TLS */
 
+#define RESP_BUFSIZE 4096
+
 int main(void) {
   struct transport *t = NULL;
   struct xrpc_client *cli = NULL;
   struct xrpc_request_header req_hdr = {
       .op = 0, .reqid = 1, .sz = 2 * sizeof(uint64_t)};
+  struct xrpc_response_header rsp_hdr = {
+      .op = 0, .reqid = 1, .sz = RESP_BUFSIZE};
   uint64_t nums[2] = {6, 7};
-  struct xrpc_response rsp;
+  unsigned char *buf[RESP_BUFSIZE];
 
   struct xrpc_request req = {.hdr = &req_hdr, .data = (const void *)nums};
+  struct xrpc_response rsp = {.hdr = &rsp_hdr, .data = (void *)buf};
 
   if (transport_client_init(&t, (void *)&args) != XRPC_SUCCESS) {
     printf("cannot create transport client\n");
     goto exit;
   }
 
-  if (xrpc_client_connect(&cli, t) != XRPC_SUCCESS) {
+  if (xrpc_client_init(&cli, t) != XRPC_SUCCESS) {
     printf("cannot create transport server\n");
     goto exit;
   }
@@ -85,6 +90,7 @@ int main(void) {
     printf("call error\n");
     goto exit;
   }
+
   printf("%lu+%lu=%lu\n", nums[0], nums[1], *(uint64_t *)rsp.data);
 
 exit:

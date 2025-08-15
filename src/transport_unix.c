@@ -1,6 +1,5 @@
 #include <errno.h>
 #include <stdlib.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -23,15 +22,10 @@ struct transport_args {
 int transport_server_init(struct transport **s, const void *_args) {
   int ret, fd;
   struct transport_args *args = (struct transport_args *)_args;
-  struct transport *t = NULL;
+
   // alloc the server
-  *s = malloc(sizeof(struct transport));
-  if (!*s) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
-
-  t = *s;
-
-  struct sockaddr_un addr = {.sun_family = AF_UNIX};
-  strncpy(addr.sun_path, args->sa.sun_path, sizeof(args->sa.sun_path));
+  struct transport *t = malloc(sizeof(struct transport));
+  if (!t) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
 
   if (fd = socket(AF_UNIX, SOCK_STREAM, 0), fd < 0)
     _print_syscall_err_and_return("socket", XRPC_TRANSPORT_ERR_SOCKET);
@@ -40,7 +34,8 @@ int transport_server_init(struct transport **s, const void *_args) {
   if (ret < 0 && errno != ENOENT)
     _print_syscall_err_and_return("unlink", XRPC_TRANSPORT_ERR_UNLINK);
 
-  ret = bind(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_un));
+  ret =
+      bind(fd, (const struct sockaddr *)&args->sa, sizeof(struct sockaddr_un));
   if (ret < 0) _print_syscall_err_and_return("bind", XRPC_TRANSPORT_ERR_BIND);
 
   if (ret = listen(fd, BACKLOG), ret < 0)
@@ -49,6 +44,33 @@ int transport_server_init(struct transport **s, const void *_args) {
   t->server_fd = fd;
   t->client_fd = -1;
 
+  *s = t;
+
+  return XRPC_SUCCESS;
+}
+
+int transport_client_init(struct transport **t, const void *_args) {
+
+  int ret, fd;
+  struct transport_args *args = (struct transport_args *)_args;
+
+  // alloc the server
+  struct transport *s = malloc(sizeof(struct transport));
+  if (!t) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
+
+  if (fd = socket(AF_UNIX, SOCK_STREAM, 0), fd < 0)
+    _print_syscall_err_and_return("socket", XRPC_TRANSPORT_ERR_SOCKET);
+
+  ret = connect(fd, (const struct sockaddr *)&args->sa,
+                sizeof(struct sockaddr_un));
+
+  if (ret < 0)
+    _print_syscall_err_and_return("connect", XRPC_TRANSPORT_ERR_CONNECT);
+
+  s->client_fd = fd;
+  s->server_fd = -1;
+
+  *t = s;
   return XRPC_SUCCESS;
 }
 
@@ -100,11 +122,15 @@ int transport_send(struct transport *t, const void *b, size_t l) {
 }
 
 void transport_release_client(struct transport *t) {
-  if (t->client_fd > 0) close(t->client_fd);
+  if (t->client_fd > 0) {
+    close(t->client_fd);
+    t->client_fd = -1;
+  }
 }
 
 void transport_free(struct transport *t) {
   if (!t) return;
-  close(t->server_fd);
+  if (t->server_fd < 0) close(t->server_fd);
+  if (t->client_fd < 0) close(t->client_fd);
   free(t);
 }

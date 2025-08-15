@@ -16,6 +16,7 @@
 #define XRPC_API_ERR_ALLOC -1
 #define XRPC_API_ERR_BAD_OPID -2
 #define XRPC_API_HANDLER_ALREADY_REGISTERED -3
+#define XRPC_API_INVALID_TRANSPORT -4
 
 /*
  * Transport related errors
@@ -33,6 +34,7 @@
 #define XRPC_TRANSPORT_ERR_READ -105
 #define XRPC_TRANSPORT_ERR_WRITE -106
 #define XRPC_TRANSPORT_ERR_ADDRESS -107
+#define XRPC_TRANSPORT_ERR_CONNECT -108
 
 /*
  * Unix socket specific errors
