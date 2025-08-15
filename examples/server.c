@@ -11,11 +11,11 @@
 /*
  * For demonstration purposes this sums just 2 uint64_t.
  */
-int sum_handler(const struct xrpc_request *req, struct xrpc_response *res) {
+static int sum_handler(const struct xrpc_request *req,
+                       struct xrpc_response *res) {
   if (req->hdr->sz != 16) {
     res->hdr->status = XRPC_RESPONSE_INVALID_PARAMS;
     res->hdr->sz = 0;
-
     return XRPC_SUCCESS;
   }
   uint64_t *p = (uint64_t *)req->data;
@@ -23,14 +23,11 @@ int sum_handler(const struct xrpc_request *req, struct xrpc_response *res) {
   uint64_t op1 = *p++;
   uint64_t op2 = *p;
   uint64_t c = op1 + op2;
-  unsigned char *b = (unsigned char *)&c;
-  unsigned char *resp_buf = (unsigned char *)res->data;
 
-  for (size_t i = 0; i < sizeof(uint64_t); ++i) {
-    resp_buf[i] = *b++;
-  }
-
+  // write the header and populate the result
+  res->hdr->status = XRPC_RESPONSE_SUCCESS;
   res->hdr->sz = sizeof(uint64_t);
+  memcpy(res->data, &c, sizeof(uint64_t));
 
   return XRPC_SUCCESS;
 }
@@ -41,8 +38,8 @@ int sum_handler(const struct xrpc_request *req, struct xrpc_response *res) {
  * For now assume uint64_t arrays. Since req->hdr->sz is bytes, to get the
  * number of elements we need to divide by the sizeof(type)
  */
-int dot_product_handler(const struct xrpc_request *req,
-                        struct xrpc_response *res) {
+static int dot_product_handler(const struct xrpc_request *req,
+                               struct xrpc_response *res) {
 
   // We cannot construct 2 arrays from an odd size
   if (req->hdr->sz % (2 * sizeof(uint64_t)) != 0) {
@@ -55,8 +52,6 @@ int dot_product_handler(const struct xrpc_request *req,
   size_t arr_sz = req->hdr->sz / (2 * sizeof(uint64_t));
   uint64_t *p = (uint64_t *)req->data;
   uint64_t prod = 0;
-  unsigned char *b = (unsigned char *)&prod;
-  unsigned char *resp = (unsigned char *)res->data;
 
   for (size_t i = 0; i < arr_sz; i++) {
     prod += p[i] * p[i + arr_sz];
@@ -65,9 +60,8 @@ int dot_product_handler(const struct xrpc_request *req,
   res->hdr->status = XRPC_RESPONSE_SUCCESS;
   res->hdr->sz = sizeof(uint64_t);
 
-  for (size_t i = 0; i < sizeof(uint64_t); ++i) {
-    resp[i] = b[i];
-  }
+  memcpy(res->data, &prod, sizeof(uint64_t));
+  res->hdr->sz = sizeof(uint64_t);
 
   return XRPC_SUCCESS;
 }
