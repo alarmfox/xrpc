@@ -28,6 +28,7 @@
  */
 #ifdef DEBUG
 #include <errno.h>
+#include <string.h>
 #define _print_syscall_err_and_return(syscall_name, retcode)                   \
   {                                                                            \
     fprintf(stderr, "[XRPC-DEBUG] %s failed: %s (errno=%d)\n", syscall_name,   \
