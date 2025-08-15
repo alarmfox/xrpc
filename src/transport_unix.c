@@ -130,7 +130,7 @@ void transport_release_client(struct transport *t) {
 
 void transport_free(struct transport *t) {
   if (!t) return;
-  if (t->server_fd < 0) close(t->server_fd);
-  if (t->client_fd < 0) close(t->client_fd);
+  if (t->server_fd > 0) close(t->server_fd);
+  if (t->client_fd > 0) close(t->client_fd);
   free(t);
 }
