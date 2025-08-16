@@ -1,15 +1,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "internal/debug.h"
-#include "internal/transport.h"
+#include "xrpc/debug.h"
 #include "xrpc/error.h"
+#include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
 #define MAX_HANDLERS 256
 #define MAX_REQUEST_SIZE (1024 * 128) // 128K
 #define RESPONSE_BUF_SIZE (1024 * 4)  // 4K
-
+static void dump_hex(const void *p, size_t len) {
+  const unsigned char *b = p;
+  for (size_t i = 0; i < len; ++i)
+    printf("%02x", b[i]);
+  printf("\n");
+}
 struct xrpc_server {
   xrpc_handler_fn handlers[MAX_HANDLERS];
   struct xrpc_transport *t;
@@ -57,21 +62,28 @@ int xrpc_server_run(struct xrpc_server *srv) {
 
   uint8_t request_buffer[MAX_REQUEST_SIZE];
   uint8_t response_buffer[RESPONSE_BUF_SIZE];
+  struct xrpc_connection *conn = NULL;
 
   while (1) {
-    if (ret = xrpc_transport_server_poll_client(srv->t), ret != XRPC_SUCCESS)
+    if (ret = srv->t->ops->accept_connection(srv->t, &conn),
+        ret != XRPC_SUCCESS)
       continue;
     while (1) {
       struct xrpc_request request = {0};
       struct xrpc_response response = {0};
       struct xrpc_request_header rq_hdr = {0};
       struct xrpc_response_header rs_hdr = {0};
+      uint8_t hdr_buf[16];
+      memset(hdr_buf, 0, 16);
 
       // read the header
-      ret = xrpc_transport_server_recv(srv->t, (void *)&rq_hdr,
-                                       sizeof(struct xrpc_request_header));
+      ret = srv->t->ops->recv(conn, (void *)&hdr_buf, sizeof(hdr_buf));
+
+      memcpy(&rq_hdr, hdr_buf, 16);
 
       if (ret != XRPC_SUCCESS) break;
+      printf("server received header bytes: ");
+      dump_hex(&rq_hdr, sizeof(struct xrpc_request_header));
 
       request.hdr = &rq_hdr;
       response.hdr = &rs_hdr;
@@ -87,8 +99,7 @@ int xrpc_server_run(struct xrpc_server *srv) {
       // read the request payload if any
       if (request.hdr->sz > 0) {
 
-        ret = xrpc_transport_server_recv(srv->t, (void *)request_buffer,
-                                         request.hdr->sz);
+        ret = srv->t->ops->recv(conn, (void *)request_buffer, request.hdr->sz);
         if (ret != XRPC_SUCCESS) break;
 
         request.data = request_buffer;
@@ -117,17 +128,17 @@ int xrpc_server_run(struct xrpc_server *srv) {
     send_response:
 
       // send header
-      ret = xrpc_transport_server_send(srv->t, (const void *)response.hdr,
-                                       sizeof(struct xrpc_response_header));
+      ret = srv->t->ops->send(conn, (const void *)response.hdr,
+                              sizeof(struct xrpc_response_header));
 
       // send result
       if (response.hdr->sz > 0) {
-        if (xrpc_transport_server_send(srv->t, (const void *)response.data,
-                                       response.hdr->sz) != XRPC_SUCCESS)
+        if (srv->t->ops->send(conn, (const void *)response.data,
+                              response.hdr->sz) != XRPC_SUCCESS)
           break;
       }
     }
-    xrpc_transport_server_release_client(srv->t);
+    srv->t->ops->close_connection(conn);
   }
 
   return ret;

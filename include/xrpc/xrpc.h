@@ -294,4 +294,11 @@ void xrpc_client_free(struct xrpc_client *cli);
     },                                                                         \
   }
 
+#define XRPC_UNIX_SERVER_DEFAULT_CONFIG(path_)                                 \
+  {                                                                            \
+    .type = XRPC_TRANSPORT_UNIX,                                               \
+    .config.unix = {                                                           \
+        .addr = {.sun_family = AF_UNIX, .sun_path = path_},                    \
+    },                                                                         \
+  }
 #endif // __XRPC_H

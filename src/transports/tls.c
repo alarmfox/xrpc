@@ -3,9 +3,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "internal/debug.h"
-#include "internal/transport.h"
+#include "xrpc/debug.h"
 #include "xrpc/error.h"
+#include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
 #include "mbedtls/ctr_drbg.h"
@@ -13,17 +13,17 @@
 #include "mbedtls/net_sockets.h"
 #include "mbedtls/ssl.h"
 
+const struct xrpc_transport_ops xrpc_transport_tls_ops;
+
 struct xrpc_transport_data {
   // Replaces classic Linux sockets
-  mbedtls_net_context server_fd;
-  mbedtls_net_context client_fd;
+  mbedtls_net_context fd;
 
   // Random number
   mbedtls_entropy_context entropy;
   mbedtls_ctr_drbg_context ctr_drbg;
 
   // SSL context
-  mbedtls_ssl_context ssl;
   mbedtls_ssl_config conf;
 
   // Cert and key
@@ -31,39 +31,58 @@ struct xrpc_transport_data {
   mbedtls_pk_context pkey;
 };
 
-int xrpc_transport_server_tls_poll_client(struct xrpc_transport *t) {
+struct xrpc_connection {
+  mbedtls_ssl_context ssl;
+  mbedtls_net_context fd;
+};
+
+int xrpc_transport_server_tls_accept_connection(struct xrpc_transport *t,
+                                                struct xrpc_connection **conn) {
 
   int ret;
+  mbedtls_net_context fd;
+  mbedtls_ssl_context ssl;
+  struct xrpc_connection *c = NULL;
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
 
-  ret = mbedtls_net_accept(&data->server_fd, &data->client_fd, NULL, 0, NULL);
+  if ((ret = mbedtls_ssl_setup(&ssl, &data->conf)) != 0)
+    _print_mbedtls_err_and_return("mbedtls_ssl_setup", ret,
+                                  XRPC_TRANSPORT_ERR_SSL_SETUP_FAILED);
+  mbedtls_net_init(&fd);
+  mbedtls_ssl_init(&ssl);
+
+  ret = mbedtls_net_accept(&data->fd, &fd, NULL, 0, NULL);
 
   if (ret != 0)
     _print_mbedtls_err_and_return("mbedtls_net_accept", ret,
                                   XRPC_TRANSPORT_ERR_ACCEPT);
 
-  mbedtls_ssl_set_bio(&data->ssl, &data->client_fd, mbedtls_net_send,
-                      mbedtls_net_recv, NULL);
+  mbedtls_ssl_set_bio(&ssl, &fd, mbedtls_net_send, mbedtls_net_recv, NULL);
 
-  while ((ret = mbedtls_ssl_handshake(&data->ssl)) != 0) {
+  while ((ret = mbedtls_ssl_handshake(&ssl)) != 0) {
     if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
       _print_mbedtls_err_and_return("mbedtls_ssl_handshake", ret,
                                     XRPC_TRANSPORT_ERR_HANDSHAKE_FAILED);
     }
   }
 
+  c = malloc(sizeof(struct xrpc_connection));
+  c->fd = fd;
+  c->ssl = ssl;
+
+  *conn = c;
+
   return XRPC_SUCCESS;
 }
 
-int xrpc_transport_server_tls_recv(struct xrpc_transport *t, void *b,
+int xrpc_transport_server_tls_recv(struct xrpc_connection *conn, void *b,
                                    size_t l) {
   size_t tot_read = 0;
   ssize_t n;
-  struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
   unsigned char *tmp = (unsigned char *)b;
 
   do {
-    n = mbedtls_ssl_read(&data->ssl, tmp, l - tot_read);
+    n = mbedtls_ssl_read(&conn->ssl, tmp, l - tot_read);
     if (n == MBEDTLS_ERR_SSL_WANT_READ || n == MBEDTLS_ERR_SSL_WANT_WRITE) {
       continue;
     }
@@ -95,40 +114,38 @@ int xrpc_transport_server_tls_recv(struct xrpc_transport *t, void *b,
   return XRPC_SUCCESS;
 }
 
-int xrpc_transport_server_tls_send(struct xrpc_transport *t, const void *b,
+int xrpc_transport_server_tls_send(struct xrpc_connection *conn, const void *b,
                                    size_t l) {
   int n = 0;
-  struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
   unsigned char *tmp = (unsigned char *)b;
 
-  while ((n = mbedtls_ssl_write(&data->ssl, tmp, l)) <= 0)
+  while ((n = mbedtls_ssl_write(&conn->ssl, tmp, l)) <= 0)
     _print_mbedtls_err_and_return("mbedtls_ssl_write", n,
                                   XRPC_TRANSPORT_ERR_WRITE);
 
   return XRPC_SUCCESS;
 }
 
-void xrpc_transport_server_tls_release_client(struct xrpc_transport *t) {
+void xrpc_transport_server_tls_close_connection(struct xrpc_connection *conn) {
   int n;
-  struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
 
-  while ((n = mbedtls_ssl_close_notify(&data->ssl)) < 0) {
+  while ((n = mbedtls_ssl_close_notify(&conn->ssl)) < 0) {
     if (n != MBEDTLS_ERR_SSL_WANT_READ && n != MBEDTLS_ERR_SSL_WANT_WRITE &&
         n != MBEDTLS_ERR_NET_CONN_RESET) {
       XRPC_DEBUG_PRINT("mbedtls_ssl_close_notify: %d", n);
     }
   }
-  mbedtls_net_free(&data->client_fd);
-  mbedtls_ssl_session_reset(&data->ssl);
+  mbedtls_net_free(&conn->fd);
+  mbedtls_ssl_session_reset(&conn->ssl);
+
+  free(conn);
 }
 
-void xrpc_transport_server_free_tls(struct xrpc_transport *t) {
+void xrpc_transport_server_tls_free(struct xrpc_transport *t) {
   if (!t) return;
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
 
-  mbedtls_net_free(&data->server_fd);
-  mbedtls_net_free(&data->client_fd);
-  mbedtls_ssl_free(&data->ssl);
+  mbedtls_net_free(&data->fd);
   mbedtls_ssl_config_free(&data->conf);
   mbedtls_ctr_drbg_free(&data->ctr_drbg);
   mbedtls_entropy_free(&data->entropy);
@@ -137,31 +154,24 @@ void xrpc_transport_server_free_tls(struct xrpc_transport *t) {
   free(t);
 }
 
-static const struct xrpc_transport_ops tls_ops = {
-    .poll_client = xrpc_transport_server_tls_poll_client,
-    .release_client = xrpc_transport_server_tls_release_client,
-    .recv = xrpc_transport_server_tls_recv,
-    .send = xrpc_transport_server_tls_send,
-};
-
-int xrpc_transport_server_init_tls(struct xrpc_transport **s,
-                                   const struct xrpc_server_tls_config *args) {
+int xrpc_transport_server_tls_init(struct xrpc_transport **s,
+                                   const struct xrpc_server_config *conf) {
   int ret;
   const char *pers = "ssl_server";
+  const struct xrpc_server_tls_config *args = &conf->config.tls;
   struct xrpc_transport *t = malloc(sizeof(struct xrpc_transport));
   struct xrpc_transport_data *data = malloc(sizeof(struct xrpc_transport_data));
 
   if (!t) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
 
   // init block
-  mbedtls_net_init(&data->server_fd);
-  mbedtls_ssl_init(&data->ssl);
+  mbedtls_net_init(&data->fd);
   mbedtls_ssl_config_init(&data->conf);
   mbedtls_x509_crt_init(&data->srvcert);
   mbedtls_pk_init(&data->pkey);
   mbedtls_ctr_drbg_init(&data->ctr_drbg);
   mbedtls_entropy_init(&data->entropy);
-  t->ops = &tls_ops;
+  t->ops = &xrpc_transport_tls_ops;
 
   ret = mbedtls_ctr_drbg_seed(&data->ctr_drbg, mbedtls_entropy_func,
                               &data->entropy,
@@ -182,7 +192,7 @@ int xrpc_transport_server_init_tls(struct xrpc_transport **s,
     _print_mbedtls_err_and_return("mbedtls_pk_parse_keyfile", ret,
                                   XRPC_TRANSPORT_ERR_INVALID_KEY);
 
-  ret = mbedtls_net_bind(&data->server_fd, args->address, args->port,
+  ret = mbedtls_net_bind(&data->fd, args->address, args->port,
                          MBEDTLS_NET_PROTO_TCP);
 
   if (ret != 0)
@@ -205,11 +215,16 @@ int xrpc_transport_server_init_tls(struct xrpc_transport **s,
     _print_mbedtls_err_and_return("mbedtls_ssl_conf_own_cert", ret,
                                   XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE);
 
-  if ((ret = mbedtls_ssl_setup(&data->ssl, &data->conf)) != 0)
-    _print_mbedtls_err_and_return("mbedtls_ssl_setup", ret,
-                                  XRPC_TRANSPORT_ERR_SSL_SETUP_FAILED);
-
   t->data = data;
   *s = t;
   return XRPC_SUCCESS;
 }
+
+const struct xrpc_transport_ops xrpc_transport_tls_ops = {
+    .init = xrpc_transport_server_tls_init,
+    .free = xrpc_transport_server_tls_free,
+    .accept_connection = xrpc_transport_server_tls_accept_connection,
+    .close_connection = xrpc_transport_server_tls_close_connection,
+    .recv = xrpc_transport_server_tls_recv,
+    .send = xrpc_transport_server_tls_send,
+};

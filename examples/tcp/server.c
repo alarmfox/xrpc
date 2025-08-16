@@ -4,8 +4,8 @@
 #include <string.h>
 #include <sys/socket.h>
 
-#include "internal/transport.h"
 #include "xrpc/error.h"
+#include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
 #define OP_SUM 0x0
