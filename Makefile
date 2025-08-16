@@ -4,8 +4,6 @@ AR = ar
 CFLAGS = -std=c99 -Wall -Wextra -fPIC
 CFLAGS += -Iinclude/ $(MBEDTLS_INC)
 
-LDFLAGS = -static
-
 ARFLAGS = rcs
 
 # TLS-only flags
@@ -36,8 +34,8 @@ libxrpc.a: $(ALL_OBJS)
 
 ## examples: builds examples
 examples: libxrpc.a
-	$(CC) $(CFLAGS) $(LDFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc
-	$(CC) $(CFLAGS) $(LDFLAGS) examples/tcp/client.c -o examples/tcp/client -L. -lxrpc
+	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc
+	$(CC) $(CFLAGS) examples/tcp/client.c -o examples/tcp/client -L. -lxrpc
 
 clean:
 	rm -f $(ALL_OBJS) libxrpc.a examples/*/server examples/*/client
