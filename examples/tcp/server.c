@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "error.h"
-#include "xrpc_server.h"
+#include "internal/transport.h"
+#include "xrpc/error.h"
+#include "xrpc/xrpc.h"
 
 #define OP_SUM 0x0
 #define OP_DOT_PROD 0x1
@@ -66,72 +67,24 @@ static int dot_product_handler(const struct xrpc_request *req,
   return XRPC_SUCCESS;
 }
 
-#ifdef TRANSPORT_UNIX
-#define UNIX_SOCKET_PATH "/tmp/xrpc.sock"
-
-#include <sys/socket.h>
-#include <sys/un.h>
-static struct transport_args {
-  struct sockaddr_un sa;
-} args = {.sa = {.sun_family = AF_LOCAL, .sun_path = UNIX_SOCKET_PATH}};
-#endif /* if TRANSPORT_UNIX */
-
-#ifdef TRANSPORT_TCP
 #include <netinet/in.h>
 #include <sys/socket.h>
-
-static struct transport_args {
-  struct sockaddr_in sa;
-} args = {.sa = {
-              .sin_family = AF_INET,
-              .sin_addr =
-                  {
-                      .s_addr = INADDR_LOOPBACK,
-                  },
-              .sin_port = 9000,
-
-          }};
-
-#endif /* if TRANSPORT_TCP */
-
-#ifdef TRANSPORT_TLS
-#include <netinet/in.h>
-#include <sys/socket.h>
-
-#define CRT_PATH "certs/certificate.crt"
-#define KEY_PATH "certs/pkey"
-
-static struct transport_args {
-  struct sockaddr_in sa;
-  char *crt_path;
-  char *key_path;
-} args = {
-    .sa =
-        {
-            .sin_family = AF_INET,
-            .sin_addr =
-                {
-                    .s_addr = INADDR_LOOPBACK,
-                },
-            .sin_port = 9001,
-
-        },
-    .crt_path = CRT_PATH,
-    .key_path = KEY_PATH,
-};
-
-#endif /* if TRANSPORT_TLS */
 
 int main(void) {
-  struct transport *t = NULL;
+  struct xrpc_transport *t = NULL;
   struct xrpc_server *rs = NULL;
+  struct xrpc_tcp_server_config args = {0};
 
-  if (transport_server_init(&t, (void *)&args) != XRPC_SUCCESS) {
+  args.addr.sin_family = AF_INET;
+  args.addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  args.addr.sin_port = htons(9000);
+
+  if (xrpc_transport_server_init_tcp(&t, &args) != XRPC_SUCCESS) {
     printf("cannot create transport server\n");
     goto exit;
   }
 
-  if (xrpc_server_create(&rs, t, 10) != XRPC_SUCCESS) {
+  if (xrpc_server_create(&rs, t) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");
     goto exit;
   }
@@ -148,11 +101,11 @@ int main(void) {
     goto exit;
   }
 
-  while (xrpc_server_poll(rs) == 0) {}
+  while (xrpc_server_run(rs) == 0) {}
 
 exit:
   xrpc_server_free(rs);
-  transport_free(t);
+  xrpc_transport_server_free_tcp(t);
 
   return 0;
 }

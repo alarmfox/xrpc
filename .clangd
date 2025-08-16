@@ -2,5 +2,4 @@ CompileFlags:
   Add:
     - "-Iinclude/"
     - "-Iexternal/mbedtls/include"
-    - "-DTRANSPORT_UNIX"
-  CompilationDatabase: build/
+  CompilationDatabase: .

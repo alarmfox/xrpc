@@ -1,67 +1,49 @@
-CC ?= gcc
+CC = gcc
+AR = ar
 
-# TLS-only flags
-MBEDTLS_INC = -Iexternal/mbedtls/include
-MBEDTLS_LIBS = lib/libmbedtls.a lib/libmbedx509.a lib/libmbedcrypto.a
-
-# Classig CFLAGS
-CFLAGS = -Wall -Wextra -std=c99
+CFLAGS = -std=c99 -Wall -Wextra -fPIC
 CFLAGS += -Iinclude/ $(MBEDTLS_INC)
 
 LDFLAGS = -static
 
+ARFLAGS = rcs
+
+# TLS-only flags
+# TODO: configure this dinamically
+MBEDTLS_INC = -Iexternal/mbedtls/include
+MBEDTLS_LIBS = lib/libmbedtls.a lib/libmbedx509.a lib/libmbedcrypto.a
+
+BUILD_DIR = build
+
 ifeq ($(DEBUG),1)
-CFLAGS += -O0 -g -DDEBUG
+CFLAGS += -O0 -g3 -DDEBUG
 else
 CFLAGS += -O2
 endif
 
-## examples: builds all examples
-examples: build/rpc_server_unix build/rpc_server_tcp build/rpc_server_tls build/rpc_client_unix
+CORE_SRCS = $(wildcard src/core/*.c)
+TRANSPORT_SRCS = $(wildcard src/transports/*.c)
 
-## build/rpc_server_unix: builds unix implementation
-build/rpc_server_unix: build/server_unix.o build/transport_unix.o build/xrpc_server.o
-	$(CC) $(LDFLAGS) -o $@ $^
+ALL_SRCS = $(CORE_SRCS) $(TRANSPORT_SRCS)
+ALL_OBJS = $(ALL_SRCS:.c=.o)
 
-## build/rpc_server_tcp: builds tcp implementation
-build/rpc_server_tcp: build/server_tcp.o build/transport_tcp.o build/xrpc_server.o
-	$(CC) $(LDFLAGS) -o $@ $^
+## libxrpc.a: builds the library
+libxrpc.a: $(ALL_OBJS)
+	$(AR) $(ARFLAGS) $@ $^
 
-## build/rpc_server_tls: builds TLS over TCP implementation with mbedtls library
-build/rpc_server_tls: build/server_tls.o build/transport_tls.o build/xrpc_server.o 
-	$(CC) $(LDFLAGS) -o $@ $^ $(MBEDTLS_LIBS)
-
-## build/rpc_client_unix: builds unix client
-build/rpc_client_unix: build/client_unix.o build/transport_unix.o build/xrpc_client.o 
-	$(CC) $(LDFLAGS) -o $@ $^
-
-## build/server_unix.o: builds server.c defining the TRANSPORT_UNIX symbol
-build/server_unix.o: examples/server.c | build
-	$(CC) $(CFLAGS) -DTRANSPORT_UNIX -c -o $@ $<
-
-## build/server_tcp.o: builds server.c defining the TRANSPORT_TCP symbol
-build/server_tcp.o: examples/server.c | build
-	$(CC) $(CFLAGS) -DTRANSPORT_TCP -c -o $@ $<
-
-## build/server_tcp_tls.o: builds server.c defining the TRANSPORT_TLS symbol
-build/server_tls.o: examples/server.c | build
-	$(CC) $(CFLAGS) -DTRANSPORT_TLS -c -o $@ $<
-
-## build/client_unix.o: builds server.c defining the TRANSPORT_TLS symbol
-build/client_unix.o: examples/client.c | build
-	$(CC) $(CFLAGS) -DTRANSPORT_UNIX -c -o $@ $<
-
-build/%.o: src/%.c | build
+%.o: %.c 
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-build:
-	mkdir -p build
+## examples: builds examples
+examples: libxrpc.a
+	$(CC) $(CFLAGS) $(LDFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc
+	$(CC) $(CFLAGS) $(LDFLAGS) examples/tcp/client.c -o examples/tcp/client -L. -lxrpc
 
-## clean: remove builds artifacts
 clean:
-	rm -rf build/*.o build/rpc_server_unix build/rpc_server_tcp build/rpc_server_tls
+	rm -f $(ALL_OBJS) libxrpc.a examples/*/server examples/*/client
 
-.PHONY: help
+.PHONY: examples clean help
+
 ## help: prints this help message
 help:
 	@echo "Usage: \n"

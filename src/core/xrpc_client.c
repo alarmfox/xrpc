@@ -1,15 +1,15 @@
 #include <stdlib.h>
 
-#include "debug.h"
-#include "error.h"
-#include "transport.h"
-#include "xrpc_common.h"
+#include "internal/debug.h"
+#include "internal/transport.h"
+#include "xrpc/error.h"
+#include "xrpc/xrpc.h"
 
 struct xrpc_client {
-  struct transport *t;
+  struct xrpc_transport *t;
 };
 
-int xrpc_client_init(struct xrpc_client **cli, struct transport *t) {
+int xrpc_client_init(struct xrpc_client **cli, struct xrpc_transport *t) {
   struct xrpc_client *c = malloc(sizeof(struct xrpc_client));
 
   if (!c) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);

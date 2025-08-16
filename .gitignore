@@ -1,3 +1,6 @@
+*.o
+
+# Include these directories and exclude everything else.
 /*
 !/.clang-format
 !/.clangd
@@ -9,3 +12,4 @@
 !/include
 !/src
 !/test
+

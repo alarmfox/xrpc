@@ -1,25 +1,19 @@
 #include <arpa/inet.h>
-#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#include "debug.h"
-#include "error.h"
-#include "transport.h"
+#include "internal/debug.h"
+#include "internal/transport.h"
+#include "xrpc/error.h"
+#include "xrpc/xrpc.h"
 
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/net_sockets.h"
 #include "mbedtls/ssl.h"
 
-struct transport_args {
-  struct sockaddr_in sa;
-  char *cert_path;
-  char *key_path;
-};
-
-struct transport {
+struct xrpc_transport {
   // Replaces classic Linux sockets
   mbedtls_net_context server_fd;
   mbedtls_net_context client_fd;
@@ -37,30 +31,17 @@ struct transport {
   mbedtls_pk_context pkey;
 };
 
-int transport_server_init(struct transport **s, const void *_args) {
+int xrpc_transport_server_init_tls(struct xrpc_transport **s,
+                                   const struct xrpc_tls_server_config *args) {
   int ret;
   const char *pers = "ssl_server";
-  struct transport_args *args = (struct transport_args *)_args;
-  struct transport *t = NULL;
-  char addr[INET_ADDRSTRLEN];
-  char port[6];
+  struct xrpc_transport *t = NULL;
 
-  // we support IPV4 only for now
-  assert(args->sa.sin_family == AF_INET);
-
-  args->sa.sin_addr.s_addr = htonl(args->sa.sin_addr.s_addr);
-
-  *s = malloc(sizeof(struct transport));
+  *s = malloc(sizeof(struct xrpc_transport));
 
   if (!*s) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
 
   t = *s;
-
-  // convert address and port to string
-  snprintf(port, sizeof(port), "%d", args->sa.sin_port);
-  if (!inet_ntop(AF_INET, &(args->sa.sin_addr), addr, INET_ADDRSTRLEN)) {
-    _print_syscall_err_and_return("inet_ntop", XRPC_TRANSPORT_ERR_ADDRESS);
-  }
 
   // init block
   mbedtls_net_init(&t->server_fd);
@@ -79,7 +60,7 @@ int transport_server_init(struct transport **s, const void *_args) {
     _print_mbedtls_err_and_return("mbedtls_ctr_drbg_seed", ret,
                                   XRPC_TRANSPORT_ERR_INVALID_SEED);
 
-  ret = mbedtls_x509_crt_parse_file(&t->srvcert, args->cert_path);
+  ret = mbedtls_x509_crt_parse_file(&t->srvcert, args->crt_path);
   if (ret != 0)
     _print_mbedtls_err_and_return("mbedtls_x509_crt_parse_file", ret,
                                   XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE);
@@ -89,7 +70,8 @@ int transport_server_init(struct transport **s, const void *_args) {
     _print_mbedtls_err_and_return("mbedtls_pk_parse_keyfile", ret,
                                   XRPC_TRANSPORT_ERR_INVALID_KEY);
 
-  ret = mbedtls_net_bind(&t->server_fd, addr, port, MBEDTLS_NET_PROTO_TCP);
+  ret = mbedtls_net_bind(&t->server_fd, args->address, args->port,
+                         MBEDTLS_NET_PROTO_TCP);
 
   if (ret != 0)
     _print_mbedtls_err_and_return("mbedtls_net_bind", ret,
@@ -117,7 +99,7 @@ int transport_server_init(struct transport **s, const void *_args) {
   return XRPC_SUCCESS;
 }
 
-int transport_poll_client(struct transport *t) {
+int transport_poll_client(struct xrpc_transport *t) {
 
   int ret;
 
@@ -140,7 +122,7 @@ int transport_poll_client(struct transport *t) {
   return XRPC_SUCCESS;
 }
 
-int transport_recv(struct transport *t, void *b, size_t l) {
+int transport_recv(struct xrpc_transport *t, void *b, size_t l) {
   size_t tot_read = 0;
   ssize_t n;
   unsigned char *tmp = (unsigned char *)b;
@@ -178,7 +160,7 @@ int transport_recv(struct transport *t, void *b, size_t l) {
   return XRPC_SUCCESS;
 }
 
-int transport_send(struct transport *t, const void *b, size_t l) {
+int transport_send(struct xrpc_transport *t, const void *b, size_t l) {
   int n = 0;
 
   unsigned char *tmp = (unsigned char *)b;
@@ -190,7 +172,7 @@ int transport_send(struct transport *t, const void *b, size_t l) {
   return XRPC_SUCCESS;
 }
 
-void transport_release_client(struct transport *t) {
+void transport_release_client(struct xrpc_transport *t) {
   int n;
 
   while ((n = mbedtls_ssl_close_notify(&t->ssl)) < 0) {
@@ -204,7 +186,7 @@ void transport_release_client(struct transport *t) {
   mbedtls_ssl_session_reset(&t->ssl);
 }
 
-void transport_free(struct transport *t) {
+void xrpc_transport_server_free_tls(struct xrpc_transport *t) {
   if (!t) return;
   mbedtls_net_free(&t->server_fd);
   mbedtls_net_free(&t->client_fd);
