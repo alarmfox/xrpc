@@ -7,14 +7,9 @@
 #include "xrpc/xrpc.h"
 
 #define MAX_HANDLERS 256
-#define MAX_REQUEST_SIZE (1024 * 128) // 128K
-#define RESPONSE_BUF_SIZE (1024 * 4)  // 4K
-static void dump_hex(const void *p, size_t len) {
-  const unsigned char *b = p;
-  for (size_t i = 0; i < len; ++i)
-    printf("%02x", b[i]);
-  printf("\n");
-}
+#define MAX_REQUEST_SIZE (1024 * 1024 * 4) // 4M
+#define RESPONSE_BUF_SIZE (1024 * 4)       // 4K
+
 struct xrpc_server {
   xrpc_handler_fn handlers[MAX_HANDLERS];
   struct xrpc_transport *t;
@@ -23,7 +18,7 @@ struct xrpc_server {
 int xrpc_server_create(struct xrpc_server **srv, struct xrpc_transport *t) {
 
   if (!t)
-    _print_err_and_return("transport is NULL", XRPC_API_INVALID_TRANSPORT);
+    _print_err_and_return("transport is NULL", XRPC_API_ERR_INVALID_TRANSPORT);
 
   struct xrpc_server *s = malloc(sizeof(struct xrpc_server));
 
@@ -51,7 +46,7 @@ int xrpc_server_register(struct xrpc_server *srv, const size_t op,
 
   if (fn && !(flags & XRPC_RF_OVERWRITE))
     _print_err_and_return("handler already registered at op=%lu",
-                          XRPC_API_HANDLER_ALREADY_REGISTERED, op);
+                          XRPC_API_ERR_HANDLER_ALREADY_REGISTERED, op);
 
   srv->handlers[op] = handler;
   return XRPC_SUCCESS;
@@ -73,17 +68,12 @@ int xrpc_server_run(struct xrpc_server *srv) {
       struct xrpc_response response = {0};
       struct xrpc_request_header rq_hdr = {0};
       struct xrpc_response_header rs_hdr = {0};
-      uint8_t hdr_buf[16];
-      memset(hdr_buf, 0, 16);
 
       // read the header
-      ret = srv->t->ops->recv(conn, (void *)&hdr_buf, sizeof(hdr_buf));
-
-      memcpy(&rq_hdr, hdr_buf, 16);
+      ret = srv->t->ops->recv(conn, (void *)&rq_hdr,
+                              sizeof(struct xrpc_request_header));
 
       if (ret != XRPC_SUCCESS) break;
-      printf("server received header bytes: ");
-      dump_hex(&rq_hdr, sizeof(struct xrpc_request_header));
 
       request.hdr = &rq_hdr;
       response.hdr = &rs_hdr;
