@@ -89,14 +89,17 @@ int xrpc_transport_server_init_tls(struct xrpc_transport **t,
 static inline int xrpc_transport_server_poll_client(struct xrpc_transport *t) {
   return t->ops->poll_client(t);
 }
+
 static inline void
 xrpc_transport_server_release_client(struct xrpc_transport *t) {
   return t->ops->release_client(t);
 }
+
 static inline int xrpc_transport_server_send(struct xrpc_transport *t,
                                              const void *data, size_t s) {
   return t->ops->send(t, data, s);
 }
+
 static inline int xrpc_transport_server_recv(struct xrpc_transport *t,
                                              void *data, size_t s) {
   return t->ops->recv(t, data, s);
