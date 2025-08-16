@@ -11,11 +11,6 @@ struct xrpc_server;
 struct xrpc_client;
 struct xrpc_transport;
 
-// Definitions for configuration
-struct xrpc_unix_server_config;
-struct xrpc_tcp_server_config;
-struct xrpc_tls_server_config;
-
 /**
  * @brief RPC request header
  *
