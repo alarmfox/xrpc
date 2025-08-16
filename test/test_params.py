@@ -31,7 +31,7 @@ def do_sum(s: socket.socket) -> None:
     id = random.randint(0, 100000)
 
     # send header
-    header = struct.pack("iiQ", OP_SUM, 8 + 8, id)
+    header = struct.pack("=IIQ", OP_SUM, 8 + 8, id)
 
     # send packet
     data = struct.pack("QQ", a, b)
@@ -40,7 +40,7 @@ def do_sum(s: socket.socket) -> None:
 
     # receive response header
     res = recvall(s, 4 + 4 + 8 + 1 + 8)
-    res = struct.unpack("=iiQBQ", res)
+    res = struct.unpack("=IIQBQ", res)
     assert res[0] == OP_SUM, "request operation does not math"
     assert res[1] == 8, "response size must be 8"
     assert res[2] == id, "request id does not match"
@@ -52,14 +52,14 @@ def do_dot_prod(s: socket.socket) -> None:
     a1 = []
     a2 = []
     n = 4096 * 32
-    id = random.randint(0, 100000)
+    id = random.randint(0, 1000)
 
     for _ in range(n):
         a1.append(random.randint(0, 1000000))
         a2.append(random.randint(0, 1000000))
 
     # send header
-    header = struct.pack("iiQ", OP_DOT_PROD, 2 * n * 8, id)
+    header = struct.pack("=IIQ", OP_DOT_PROD, 2 * n * 8, id)
 
     # send packet
     data = struct.pack("QQ" * n, *a1, *a2)
@@ -67,7 +67,7 @@ def do_dot_prod(s: socket.socket) -> None:
     s.sendall(header + data)
 
     res = recvall(s, 4 + 4 + 8 + 1 + 8)
-    res = struct.unpack("=iiQBQ", res)
+    res = struct.unpack("=IIQBQ", res)
 
     p = 0
     for a, b in zip(a1, a2):
