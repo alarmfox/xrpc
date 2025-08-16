@@ -3,14 +3,9 @@
 
 #include <netinet/in.h>
 #include <stdint.h>
-#include <sys/socket.h>
 #include <sys/un.h>
 
-// Opaque definitions
-struct xrpc_server;
-struct xrpc_client;
 struct xrpc_transport;
-
 /**
  * @brief RPC request header
  *
@@ -24,7 +19,7 @@ struct __attribute__((packed)) xrpc_request_header {
 };
 
 // Response status flags
-enum XRPC_RESPONSE_STATUS {
+enum xrpc_response_status {
   XRPC_RESPONSE_SUCCESS = 1 << 0,
   XRPC_RESPONSE_INTERNAL_ERROR = 1 << 1,
   XRPC_RESPONSE_UNSUPPORTED_HANDLER = 1 << 2,
@@ -69,12 +64,68 @@ struct __attribute__((packed)) xrpc_response {
 };
 
 /*
- * Server API
+ * ==================================================================
+ * Server configuration system
+ * ==================================================================
+ */
 
- * For now to me sounds good to propose different connection creation/teardown
- * instead of relying on some sort of enumeration/type of backend stuff.
+/*
+ * @brief Unix transport configuration struct.
+ *
+ * Unix transport configuration struct. Contains sockaddr_un which contains the
+ * path for the socket.
  *
  */
+struct xrpc_server_unix_config {
+  struct sockaddr_un addr;
+};
+
+/**
+ * @brief TCP transport configuration struct.
+ *
+ * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
+ * and port.
+ */
+struct xrpc_server_tcp_config {
+  struct sockaddr_in addr;
+};
+
+/**
+ * @brief TLS transport configuration struct.
+ *
+ * TLS transport configuration struct. Contains sockaddr_in which contains IPv4
+ * and port and the path to the certificate and the private key.
+ */
+struct xrpc_server_tls_config {
+  const char *address;
+  const char *port;
+  const char *crt_path;
+  const char *key_path;
+};
+
+enum xrpc_transport_type {
+  XRPC_TRANSPORT_UNIX,
+  XRPC_TRANSPORT_TCP,
+  XRPC_TRANSPORT_TLS,
+};
+
+struct xrpc_server_config {
+  enum xrpc_transport_type type;
+  union {
+    struct xrpc_server_unix_config unix;
+    struct xrpc_server_tcp_config tcp;
+    struct xrpc_server_tls_config tls;
+  } config;
+};
+
+/*
+ * ==================================================================
+ * Server API
+ * ==================================================================
+ */
+
+// Forward definitions
+struct xrpc_server;
 
 /**
  * @brief RPC handler function signature.
@@ -85,71 +136,23 @@ struct __attribute__((packed)) xrpc_response {
 typedef int (*xrpc_handler_fn)(const struct xrpc_request *req,
                                struct xrpc_response *res);
 
-/**
- * @brief Unix transport configuration struct.
- *
- * Unix transport configuration struct. Contains sockaddr_un which contains the
- * path for the socket.
- *
- */
-struct xrpc_unix_server_config {
-  struct sockaddr_un addr;
-};
+int xrpc_transport_server_init(struct xrpc_transport **t,
+                               const struct xrpc_server_config *c);
+// void xrpc_transport_server_free(struct xrpc_transport *t);
 
-/*
- * Init and destroy unix server
- */
-int xrpc_transport_server_init_unix(struct xrpc_transport **t,
-                                    const struct xrpc_unix_server_config *c);
-void xrpc_transport_server_free_unix(struct xrpc_transport *t);
-
-/**
- * @brief TCP transport configuration struct.
- *
- * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
- * and port.
- */
-struct xrpc_tcp_server_config {
-  struct sockaddr_in addr;
-};
-/*
- * Init and destroy TCP server
- */
-int xrpc_transport_server_init_tcp(struct xrpc_transport **t,
-                                   const struct xrpc_tcp_server_config *c);
-void xrpc_transport_server_free_tcp(struct xrpc_transport *t);
-
-/**
- * @brief TLS transport configuration struct.
- *
- * TLS transport configuration struct. Contains sockaddr_in which contains IPv4
- * and port and the path to the certificate and the private key.
- */
-struct xrpc_tls_server_config {
-  const char *address;
-  const char *port;
-  const char *crt_path;
-  const char *key_path;
-};
-
-/*
- * Init and destroy TLS server
- */
-int xrpc_transport_server_init_tls(struct xrpc_transport **t,
-                                   const struct xrpc_tls_server_config *c);
-void xrpc_transport_server_free_tls(struct xrpc_transport *t);
 /**
  * @brief Create and initialize an xrpc server.
  *
  * @param[out] srv       Pointer to allocated server instance.
  * @param[in]  t         Transport instance (already initialized via
- * transport_init()).
+ * xrpc_transport_server_init()).
  * @return 0 on success, -1 on error.
  */
 int xrpc_server_create(struct xrpc_server **srv, struct xrpc_transport *t);
 
 // Register handler flags
-enum XRPC_HANDLER_REGISTER_FLAGS {
+enum xrpc_handler_register_flags {
+  // Allows user to overwrite an existing handler without giving errors.
   XRPC_RF_OVERWRITE = 1 << 0,
 };
 
@@ -187,12 +190,17 @@ int xrpc_server_run(struct xrpc_server *srv);
 void xrpc_server_free(struct xrpc_server *srv);
 
 /*
- * Client API
-
- * For now to me sounds good to propose different connection creation/teardown
- * instead of relying on some sort of enumeration/type of backend stuff.
- *
+ * ==================================================================
+ * Client configuration system
+ * ==================================================================
  */
+
+/*
+ * ==================================================================
+ * Client API
+ * ==================================================================
+ */
+struct xrpc_client;
 
 /**
  * @brief Unix transport configuration struct.
@@ -201,16 +209,9 @@ void xrpc_server_free(struct xrpc_server *srv);
  * path for the socket.
  *
  */
-struct xrpc_unix_client_config {
+struct xrpc_client_unix_config {
   struct sockaddr_un addr;
 };
-
-/*
- * Init and destroy unix client
- */
-int xrpc_transport_client_init_unix(struct xrpc_transport **t,
-                                    const struct xrpc_unix_client_config *c);
-void xrpc_transport_client_free_unix(struct xrpc_transport *t);
 
 /**
  * @brief TCP transport configuration struct.
@@ -218,15 +219,9 @@ void xrpc_transport_client_free_unix(struct xrpc_transport *t);
  * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
  * and port.
  */
-struct xrpc_tcp_client_config {
+struct xrpc_client_tcp_config {
   struct sockaddr_in addr;
 };
-/*
- * Init and destroy TCP client
- */
-int xrpc_transport_client_init_tcp(struct xrpc_transport **t,
-                                   const struct xrpc_tcp_client_config *c);
-void xrpc_transport_client_free_tcp(struct xrpc_transport *t);
 
 /**
  * @brief TLS transport configuration struct.
@@ -234,19 +229,27 @@ void xrpc_transport_client_free_tcp(struct xrpc_transport *t);
  * TLS transport configuration struct. Contains sockaddr_in which contains IPv4
  * and port and the path to the certificate and the private key.
  */
-struct xrpc_tls_client_config {
+struct xrpc_client_tls_config {
   const char *address;
   const char *port;
   const char *crt_path;
   const char *key_path;
 };
 
+struct xrpc_client_config {
+  enum xrpc_transport_type type;
+  union {
+    struct xrpc_client_unix_config unix;
+    struct xrpc_client_tcp_config tcp;
+    struct xrpc_client_tls_config tls;
+  } config;
+};
+
 /*
- * Init and destroy TLS client
+ * Init unix client
  */
-int xrpc_transport_client_init_tls(struct xrpc_transport **t,
-                                   const struct xrpc_tls_client_config *c);
-void xrpc_transport_client_free_tls(struct xrpc_transport *t);
+int xrpc_transport_client_init(struct xrpc_transport **t,
+                               const struct xrpc_client_config *c);
 
 /**
  * @brief Connect to an XRPC server.
@@ -271,6 +274,24 @@ int xrpc_call(struct xrpc_client *cli, const struct xrpc_request *rq,
 /**
  * @brief Close client and free resources.
  */
-void xrpc_client_close(struct xrpc_client *cli);
+void xrpc_client_free(struct xrpc_client *cli);
+
+/*
+ * ==================================================================
+ * Configuration utils
+ * ==================================================================
+ */
+#define XRPC_TCP_SERVER_DEFAULT_CONFIG(addr_, port_)                           \
+  {                                                                            \
+    .type = XRPC_TRANSPORT_TCP,                                                \
+    .config.tcp = {                                                            \
+        .addr =                                                                \
+            {                                                                  \
+                .sin_family = AF_INET,                                         \
+                .sin_port = htons(port_),                                      \
+                .sin_addr.s_addr = htonl(addr_),                               \
+            },                                                                 \
+    },                                                                         \
+  }
 
 #endif // __XRPC_H

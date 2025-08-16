@@ -7,13 +7,12 @@
 #include "xrpc/xrpc.h"
 
 #define MAX_HANDLERS 256
-#define MAX_REQUEST_SIZE (1024 * 1024) // 1MB
-#define RESPONSE_BUF_SIZE 4096
+#define MAX_REQUEST_SIZE (1024 * 128) // 128K
+#define RESPONSE_BUF_SIZE (1024 * 4)  // 4K
 
 struct xrpc_server {
   xrpc_handler_fn handlers[MAX_HANDLERS];
   struct xrpc_transport *t;
-  size_t max_reqs;
 };
 
 int xrpc_server_create(struct xrpc_server **srv, struct xrpc_transport *t) {
@@ -60,7 +59,8 @@ int xrpc_server_run(struct xrpc_server *srv) {
   uint8_t response_buffer[RESPONSE_BUF_SIZE];
 
   while (1) {
-    if (ret = transport_poll_client(srv->t), ret != XRPC_SUCCESS) continue;
+    if (ret = xrpc_transport_server_poll_client(srv->t), ret != XRPC_SUCCESS)
+      continue;
     while (1) {
       struct xrpc_request request = {0};
       struct xrpc_response response = {0};
@@ -68,8 +68,8 @@ int xrpc_server_run(struct xrpc_server *srv) {
       struct xrpc_response_header rs_hdr = {0};
 
       // read the header
-      ret = transport_recv(srv->t, (void *)&rq_hdr,
-                           sizeof(struct xrpc_request_header));
+      ret = xrpc_transport_server_recv(srv->t, (void *)&rq_hdr,
+                                       sizeof(struct xrpc_request_header));
 
       if (ret != XRPC_SUCCESS) break;
 
@@ -87,7 +87,8 @@ int xrpc_server_run(struct xrpc_server *srv) {
       // read the request payload if any
       if (request.hdr->sz > 0) {
 
-        ret = transport_recv(srv->t, (void *)request_buffer, request.hdr->sz);
+        ret = xrpc_transport_server_recv(srv->t, (void *)request_buffer,
+                                         request.hdr->sz);
         if (ret != XRPC_SUCCESS) break;
 
         request.data = request_buffer;
@@ -116,17 +117,17 @@ int xrpc_server_run(struct xrpc_server *srv) {
     send_response:
 
       // send header
-      ret = transport_send(srv->t, (const void *)response.hdr,
-                           sizeof(struct xrpc_response_header));
+      ret = xrpc_transport_server_send(srv->t, (const void *)response.hdr,
+                                       sizeof(struct xrpc_response_header));
 
       // send result
       if (response.hdr->sz > 0) {
-        if (transport_send(srv->t, (const void *)response.data,
-                           response.hdr->sz) != XRPC_SUCCESS)
+        if (xrpc_transport_server_send(srv->t, (const void *)response.data,
+                                       response.hdr->sz) != XRPC_SUCCESS)
           break;
       }
     }
-    transport_release_client(srv->t);
+    xrpc_transport_server_release_client(srv->t);
   }
 
   return ret;

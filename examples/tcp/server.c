@@ -1,6 +1,8 @@
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 
 #include "internal/transport.h"
 #include "xrpc/error.h"
@@ -67,19 +69,13 @@ static int dot_product_handler(const struct xrpc_request *req,
   return XRPC_SUCCESS;
 }
 
-#include <netinet/in.h>
-#include <sys/socket.h>
-
 int main(void) {
   struct xrpc_transport *t = NULL;
   struct xrpc_server *rs = NULL;
-  struct xrpc_tcp_server_config args = {0};
+  struct xrpc_server_config args =
+      XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
 
-  args.addr.sin_family = AF_INET;
-  args.addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  args.addr.sin_port = htons(9000);
-
-  if (xrpc_transport_server_init_tcp(&t, &args) != XRPC_SUCCESS) {
+  if (xrpc_transport_server_init(&t, &args) != XRPC_SUCCESS) {
     printf("cannot create transport server\n");
     goto exit;
   }
@@ -105,7 +101,7 @@ int main(void) {
 
 exit:
   xrpc_server_free(rs);
-  xrpc_transport_server_free_tcp(t);
+  // xrpc_transport_server_free(t);
 
   return 0;
 }
