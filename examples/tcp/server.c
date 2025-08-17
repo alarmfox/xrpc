@@ -5,7 +5,6 @@
 #include <sys/socket.h>
 
 #include "xrpc/error.h"
-#include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
 #define OP_SUM 0x0
@@ -70,17 +69,13 @@ static int dot_product_handler(const struct xrpc_request *req,
 }
 
 int main(void) {
-  struct xrpc_transport *t = NULL;
   struct xrpc_server *rs = NULL;
-  struct xrpc_server_config args =
+  struct xrpc_server_config cfg =
       XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
 
-  if (xrpc_transport_server_init(&t, &args) != XRPC_SUCCESS) {
-    printf("cannot create transport server\n");
-    goto exit;
-  }
+  cfg.config.tcp.nonblocking = false;
 
-  if (xrpc_server_create(&rs, t) != XRPC_SUCCESS) {
+  if (xrpc_server_create(&rs, &cfg) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");
     goto exit;
   }
@@ -101,7 +96,6 @@ int main(void) {
 
 exit:
   xrpc_server_free(rs);
-  // xrpc_transport_server_free(t);
 
   return 0;
 }

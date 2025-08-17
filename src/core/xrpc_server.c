@@ -15,24 +15,44 @@ struct xrpc_server {
   struct xrpc_transport *t;
 };
 
-int xrpc_server_create(struct xrpc_server **srv, struct xrpc_transport *t) {
+// This map stores different transports. For now this is onyl for supported
+// transport of this library. In future, a "register" method could be provided.
+static const struct xrpc_transport_ops *transport_ops_map[] = {
+    [XRPC_TRANSPORT_UNIX] = &xrpc_transport_unix_ops,
+    [XRPC_TRANSPORT_TCP] = &xrpc_transport_tcp_ops,
+    [XRPC_TRANSPORT_TLS] = &xrpc_transport_tls_ops,
+};
 
-  if (!t)
-    _print_err_and_return("transport is NULL", XRPC_API_ERR_INVALID_TRANSPORT);
+int xrpc_server_create(struct xrpc_server **srv,
+                       const struct xrpc_server_config *cfg) {
 
-  struct xrpc_server *s = malloc(sizeof(struct xrpc_server));
+  int ret = XRPC_SUCCESS;
+  struct xrpc_server *s = NULL;
+  struct xrpc_transport *t = NULL;
 
-  if (!s)
-    _print_err_and_return("cannot create xrpc_server", XRPC_API_ERR_ALLOC);
+  if (!cfg) _print_err_and_return("config is NULL", XRPC_API_ERR_INVALID_ARGS);
 
-  s->t = t;
+  s = malloc(sizeof(struct xrpc_server));
+  if (!s) _print_err_and_return("malloc", XRPC_API_ERR_ALLOC);
+
+  // Find the transport_ops table from the transport_ops_map
+  if ((size_t)cfg->type >=
+      sizeof(transport_ops_map) / sizeof(transport_ops_map[0]))
+    return XRPC_API_ERR_INVALID_TRANSPORT;
+
+  // init the transport
+  const struct xrpc_transport_ops *ops = transport_ops_map[cfg->type];
+
+  if (ret = ops->init(&t, cfg), ret != XRPC_SUCCESS)
+    _print_err_and_return("cannot create transport", ret);
 
   for (size_t i = 0; i < MAX_HANDLERS; ++i) {
     s->handlers[i] = NULL;
   }
 
+  s->t = t;
   *srv = s;
-  return XRPC_SUCCESS;
+  return ret;
 }
 
 int xrpc_server_register(struct xrpc_server *srv, const size_t op,
@@ -139,5 +159,6 @@ void xrpc_server_free(struct xrpc_server *srv) {
   for (size_t i = 0; i < MAX_HANDLERS; ++i) {
     srv->handlers[i] = 0;
   }
+  if (srv->t && srv->t->ops->free) srv->t->ops->free(srv->t);
   free(srv);
 }

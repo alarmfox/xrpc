@@ -2,6 +2,7 @@
 #define __XRPC_H
 
 #include <netinet/in.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/un.h>
 
@@ -88,6 +89,25 @@ struct xrpc_server_unix_config {
  */
 struct xrpc_server_tcp_config {
   struct sockaddr_in addr;
+
+  // TCP-specific options
+  bool nodelay;            // TCP_NODELAY (disable Nagle)
+  bool reuseaddr;          // SO_REUSEADDR
+  bool reuseport;          // SO_REUSEPORT
+  bool keepalive;          // SO_KEEPALIVE
+  int keepalive_idle;      // TCP_KEEPIDLE (seconds)
+  int keepalive_interval;  // TCP_KEEPINTVL (seconds)
+  int keepalive_probes;    // TCP_KEEPCNT
+  int send_timeout_ms;     // SO_SNDTIMEO
+  int recv_timeout_ms;     // SO_RCVTIMEO
+  uint32_t listen_backlog; // listen() backlog
+
+  // Buffer size
+  int send_buffer_size; // SO_SNDBUF
+  int recv_buffer_size; // SO_RCVBUF
+
+  // Non blocking mode
+  bool nonblocking; // Set O_NONBLOCK
 };
 
 /**
@@ -136,19 +156,17 @@ struct xrpc_server;
 typedef int (*xrpc_handler_fn)(const struct xrpc_request *req,
                                struct xrpc_response *res);
 
-int xrpc_transport_server_init(struct xrpc_transport **t,
-                               const struct xrpc_server_config *c);
-// void xrpc_transport_server_free(struct xrpc_transport *t);
-
 /**
- * @brief Create and initialize an xrpc server.
+ * @brief Creates and initializes an xrpc server including the underlying
+ * transport.
  *
  * @param[out] srv       Pointer to allocated server instance.
- * @param[in]  t         Transport instance (already initialized via
- * xrpc_transport_server_init()).
+ * @param[in]  cfg       Pointer to a valid xrpc_server_config
+ *
  * @return 0 on success, -1 on error.
  */
-int xrpc_server_create(struct xrpc_server **srv, struct xrpc_transport *t);
+int xrpc_server_create(struct xrpc_server **srv,
+                       const struct xrpc_server_config *cfg);
 
 // Register handler flags
 enum xrpc_handler_register_flags {
@@ -283,15 +301,27 @@ void xrpc_client_free(struct xrpc_client *cli);
  */
 #define XRPC_TCP_SERVER_DEFAULT_CONFIG(addr_, port_)                           \
   {                                                                            \
-    .type = XRPC_TRANSPORT_TCP,                                                \
-    .config.tcp = {                                                            \
-        .addr =                                                                \
-            {                                                                  \
-                .sin_family = AF_INET,                                         \
-                .sin_port = htons(port_),                                      \
-                .sin_addr.s_addr = htonl(addr_),                               \
-            },                                                                 \
-    },                                                                         \
+    .type = XRPC_TRANSPORT_TCP, .config.tcp = {                                \
+      .addr =                                                                  \
+          {                                                                    \
+              .sin_family = AF_INET,                                           \
+              .sin_port = htons(port_),                                        \
+              .sin_addr.s_addr = htonl(addr_),                                 \
+          },                                                                   \
+      .nodelay = true,                                                         \
+      .reuseaddr = false,                                                      \
+      .reuseport = false,                                                      \
+      .keepalive = true,                                                       \
+      .keepalive_idle = 60,                                                    \
+      .keepalive_interval = 5,                                                 \
+      .keepalive_probes = 3,                                                   \
+      .send_timeout_ms = -1,                                                   \
+      .recv_timeout_ms = -1,                                                   \
+      .listen_backlog = 128,                                                   \
+      .send_buffer_size = -1,                                                  \
+      .recv_buffer_size = -1,                                                  \
+      .nonblocking = true,                                                     \
+    }                                                                          \
   }
 
 #define XRPC_UNIX_SERVER_DEFAULT_CONFIG(path_)                                 \
