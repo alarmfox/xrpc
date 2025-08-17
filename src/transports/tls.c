@@ -31,7 +31,7 @@ struct xrpc_transport_data {
   mbedtls_pk_context pkey;
 };
 
-struct xrpc_connection {
+struct xrpc_transport_connection {
   mbedtls_ssl_context ssl;
   mbedtls_net_context fd;
 };
@@ -103,14 +103,13 @@ xrpc_transport_server_tls_init(struct xrpc_transport **s,
   return XRPC_SUCCESS;
 }
 
-static int
-xrpc_transport_server_tls_accept_connection(struct xrpc_transport *t,
-                                            struct xrpc_connection **conn) {
+static int xrpc_transport_server_tls_accept_connection(
+    struct xrpc_transport *t, struct xrpc_transport_connection **conn) {
 
   int ret;
   mbedtls_net_context fd;
   mbedtls_ssl_context ssl;
-  struct xrpc_connection *c = NULL;
+  struct xrpc_transport_connection *c = NULL;
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
 
   if ((ret = mbedtls_ssl_setup(&ssl, &data->conf)) != 0)
@@ -134,7 +133,7 @@ xrpc_transport_server_tls_accept_connection(struct xrpc_transport *t,
     }
   }
 
-  c = malloc(sizeof(struct xrpc_connection));
+  c = malloc(sizeof(struct xrpc_transport_connection));
   c->fd = fd;
   c->ssl = ssl;
 
@@ -143,8 +142,9 @@ xrpc_transport_server_tls_accept_connection(struct xrpc_transport *t,
   return XRPC_SUCCESS;
 }
 
-static int xrpc_transport_server_tls_recv(struct xrpc_connection *conn, void *b,
-                                          size_t l) {
+static int
+xrpc_transport_server_tls_recv(struct xrpc_transport_connection *conn, void *b,
+                               size_t l) {
   size_t tot_read = 0;
   ssize_t n;
   unsigned char *tmp = (unsigned char *)b;
@@ -182,8 +182,9 @@ static int xrpc_transport_server_tls_recv(struct xrpc_connection *conn, void *b,
   return XRPC_SUCCESS;
 }
 
-static int xrpc_transport_server_tls_send(struct xrpc_connection *conn,
-                                          const void *b, size_t l) {
+static int
+xrpc_transport_server_tls_send(struct xrpc_transport_connection *conn,
+                               const void *b, size_t l) {
   int n = 0;
   unsigned char *tmp = (unsigned char *)b;
 
@@ -194,8 +195,8 @@ static int xrpc_transport_server_tls_send(struct xrpc_connection *conn,
   return XRPC_SUCCESS;
 }
 
-static void
-xrpc_transport_server_tls_close_connection(struct xrpc_connection *conn) {
+static void xrpc_transport_server_tls_close_connection(
+    struct xrpc_transport_connection *conn) {
   int n;
 
   while ((n = mbedtls_ssl_close_notify(&conn->ssl)) < 0) {

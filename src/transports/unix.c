@@ -18,7 +18,7 @@ struct xrpc_transport_data {
   int fd;
 };
 
-struct xrpc_connection {
+struct xrpc_transport_connection {
   int fd;
 };
 
@@ -59,19 +59,18 @@ xrpc_transport_server_unix_init(struct xrpc_transport **s,
   return XRPC_SUCCESS;
 }
 
-static int
-xrpc_transport_server_unix_accept_connection(struct xrpc_transport *t,
-                                             struct xrpc_connection **conn) {
+static int xrpc_transport_server_unix_accept_connection(
+    struct xrpc_transport *t, struct xrpc_transport_connection **conn) {
 
   int fd;
-  struct xrpc_connection *c = NULL;
+  struct xrpc_transport_connection *c = NULL;
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
 
   fd = accept(data->fd, 0, 0);
   if (fd < 0)
     _print_syscall_err_and_return("accept", XRPC_TRANSPORT_ERR_ACCEPT);
 
-  c = malloc(sizeof(struct xrpc_connection));
+  c = malloc(sizeof(struct xrpc_transport_connection));
 
   if (!c) _print_syscall_err_and_return("malloc", XRPC_API_ERR_ALLOC);
 
@@ -81,8 +80,9 @@ xrpc_transport_server_unix_accept_connection(struct xrpc_transport *t,
   return XRPC_SUCCESS;
 }
 
-static int xprc_transport_server_unix_recv(struct xrpc_connection *conn,
-                                           void *b, size_t l) {
+static int
+xprc_transport_server_unix_recv(struct xrpc_transport_connection *conn, void *b,
+                                size_t l) {
 
   size_t tot_read = 0;
   ssize_t n;
@@ -102,8 +102,9 @@ static int xprc_transport_server_unix_recv(struct xrpc_connection *conn,
   return XRPC_SUCCESS;
 }
 
-static int xprc_transport_server_unix_send(struct xrpc_connection *conn,
-                                           const void *b, size_t l) {
+static int
+xprc_transport_server_unix_send(struct xrpc_transport_connection *conn,
+                                const void *b, size_t l) {
   size_t tot_write = 0, n;
   unsigned char *tmp = (unsigned char *)b;
 
@@ -118,12 +119,11 @@ static int xprc_transport_server_unix_send(struct xrpc_connection *conn,
   return XRPC_SUCCESS;
 }
 
-static void
-xrpc_transport_server_unix_close_connection(struct xrpc_connection *conn) {
+static void xrpc_transport_server_unix_close_connection(
+    struct xrpc_transport_connection *conn) {
   if (!conn || conn->fd < 0) return;
   close(conn->fd);
   conn->fd = -1;
-  free(conn);
 }
 
 static void xrpc_transport_server_unix_free(struct xrpc_transport *t) {
@@ -131,7 +131,7 @@ static void xrpc_transport_server_unix_free(struct xrpc_transport *t) {
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
   if (data->fd > 0) close(data->fd);
   free(data);
-  free(t);
+  data = NULL;
 }
 
 const struct xrpc_transport_ops xrpc_transport_unix_ops = {

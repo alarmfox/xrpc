@@ -5,7 +5,7 @@
 
 // Forward declarations
 struct xrpc_transport;
-struct xrpc_connection;
+struct xrpc_transport_connection;
 struct xrpc_server_config;
 
 /*
@@ -50,7 +50,7 @@ struct xrpc_transport_ops {
    * @retval -1  No new client available or an error occurred.
    */
   int (*accept_connection)(struct xrpc_transport *t,
-                           struct xrpc_connection **c);
+                           struct xrpc_transport_connection **c);
   /*
    * @brief Release the client
    *
@@ -59,7 +59,7 @@ struct xrpc_transport_ops {
    * @param[in,out] c  Pointer to the connection to close. This is freed during
    * this call.
    */
-  void (*close_connection)(struct xrpc_connection *c);
+  void (*close_connection)(struct xrpc_transport_connection *c);
 
   /**
    * @brief Receive a request from the connected client.
@@ -74,7 +74,7 @@ struct xrpc_transport_ops {
    * @retval  0  Request successfully received.
    * @retval -1  An error occurred (including client disconnection).
    */
-  int (*recv)(struct xrpc_connection *conn, void *buf, size_t len);
+  int (*recv)(struct xrpc_transport_connection *conn, void *buf, size_t len);
 
   /**
    * @brief Send a response to the connected client.
@@ -90,7 +90,8 @@ struct xrpc_transport_ops {
    * @retval  0  Response successfully sent.
    * @retval -1  An error occurred while sending.
    */
-  int (*send)(struct xrpc_connection *conn, const void *buf, size_t len);
+  int (*send)(struct xrpc_transport_connection *conn, const void *buf,
+              size_t len);
 };
 
 struct xrpc_transport {
