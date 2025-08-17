@@ -15,12 +15,13 @@
 
 // Exported VTable
 const struct xrpc_transport_ops xrpc_transport_tcp_ops;
+const struct xrpc_connection_ops xrpc_connection_tcp_ops;
 
 struct xrpc_transport_data {
   int fd;
 };
 
-struct xrpc_transport_connection {
+struct xrpc_connection_data {
   int fd;
 };
 
@@ -189,71 +190,80 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
   return XRPC_SUCCESS;
 }
 
-static int xrpc_transport_server_tcp_accept_connection(
-    struct xrpc_transport *t, struct xrpc_transport_connection **c) {
+static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
+                                            struct xrpc_connection **c) {
 
   int client_fd;
   struct sockaddr_in client;
   socklen_t client_len = sizeof(struct sockaddr_in);
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
-  struct xrpc_transport_connection *conn = NULL;
+  struct xrpc_connection *conn = NULL;
+  struct xrpc_connection_data *cdata =
+      malloc(sizeof(struct xrpc_connection_data));
 
   client_fd = accept(data->fd, (struct sockaddr *)&client, &client_len);
   if (client_fd < 0)
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("accept", XRPC_TRANSPORT_ERR_ACCEPT);
 
-  conn = malloc(sizeof(struct xrpc_transport_connection));
+  conn = malloc(sizeof(struct xrpc_connection));
 
   if (!conn) XRPC_PRINT_SYSCALL_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
 
-  conn->fd = client_fd;
+  cdata->fd = client_fd;
+  conn->data = (void *)cdata;
+  conn->ops = &xrpc_connection_tcp_ops;
 
   *c = conn;
   return XRPC_SUCCESS;
 }
 
-static int
-xrpc_transport_server_tcp_recv(struct xrpc_transport_connection *conn, void *b,
-                               size_t s) {
-  size_t tot_read = 0;
+static int xrpc_transport_server_tcp_recv(struct xrpc_connection *conn, void *b,
+                                          size_t len, size_t *bytes_read) {
   ssize_t n;
-  unsigned char *tmp = (unsigned char *)b;
+  struct xrpc_connection_data *cdata =
+      (struct xrpc_connection_data *)conn->data;
 
-  do {
-    n = read(conn->fd, tmp + tot_read, s - tot_read);
-    if (n == 0) return XRPC_TRANSPORT_ERR_READ_CONN_CLOSED;
-    if (n < 0) {
-      if (errno == EINTR) continue;
-      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("read", XRPC_TRANSPORT_ERR_READ);
-    }
-    tot_read += n;
-  } while (tot_read < s);
+  n = read(cdata->fd, b, len);
+
+  if (n == 0) return XRPC_TRANSPORT_ERR_READ_CONN_CLOSED;
+  if (n < 0) {
+    if (errno == EINTR || errno == EAGAIN) return XRPC_TRANSPORT_WOULD_BLOCK;
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("read", XRPC_TRANSPORT_ERR_READ);
+  }
+
+  *bytes_read = n;
 
   return XRPC_SUCCESS;
 }
 
-static int
-xrpc_transport_server_tcp_send(struct xrpc_transport_connection *conn,
-                               const void *b, size_t l) {
-  size_t tot_write = 0;
+static int xrpc_transport_server_tcp_send(struct xrpc_connection *conn,
+                                          const void *b, size_t len,
+                                          size_t *bytes_written) {
   ssize_t n;
-  unsigned char *tmp = (unsigned char *)b;
+  struct xrpc_connection_data *cdata =
+      (struct xrpc_connection_data *)conn->data;
 
-  do {
-    n = write(conn->fd, tmp + tot_write, l - tot_write);
-    if (n <= 0)
-      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
+  n = write(cdata->fd, b, len);
+  if (n <= 0)
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
 
-    tot_write += n;
-  } while (tot_write < l);
+  *bytes_written = n;
 
   return XRPC_SUCCESS;
 }
 
-static void xrpc_transport_server_tcp_close_connection(
-    struct xrpc_transport_connection *conn) {
+static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
+                                            struct xrpc_connection *conn) {
+  (void)t;
+  if (!conn) return;
 
-  if (conn && conn->fd > 0) close(conn->fd);
+  struct xrpc_connection_data *cdata =
+      (struct xrpc_connection_data *)conn->data;
+
+  if (cdata->fd > 0) {
+    close(cdata->fd);
+    cdata->fd = 1;
+  }
 }
 
 static void xrpc_transport_server_tcp_free(struct xrpc_transport *t) {
@@ -263,12 +273,15 @@ static void xrpc_transport_server_tcp_free(struct xrpc_transport *t) {
   free(data);
 }
 
-// VTable for TCP operations
+// TCP operations
 const struct xrpc_transport_ops xrpc_transport_tcp_ops = {
     .init = xrpc_transport_server_tcp_init,
     .free = xrpc_transport_server_tcp_free,
-    .accept_connection = xrpc_transport_server_tcp_accept_connection,
-    .close_connection = xrpc_transport_server_tcp_close_connection,
+    .accept = xrpc_transport_server_tcp_accept,
+    .close = xrpc_transport_server_tcp_close,
+};
+
+const struct xrpc_connection_ops xrpc_connection_tcp_ops = {
     .send = xrpc_transport_server_tcp_send,
     .recv = xrpc_transport_server_tcp_recv,
 };

@@ -129,6 +129,10 @@ enum xrpc_transport_type {
   XRPC_TRANSPORT_TLS,
 };
 
+enum xrpc_io_system_type {
+  XRPC_IO_SYSTEM_BLOCKING,
+};
+
 struct xrpc_transport_config {
   enum xrpc_transport_type type;
   union {
@@ -136,6 +140,16 @@ struct xrpc_transport_config {
     struct xrpc_transport_tcp_config tcp;
     struct xrpc_transport_tls_config tls;
   } config;
+};
+
+struct xrpc_io_system_config {
+  enum xrpc_io_system_type type;
+  union {
+  } config;
+};
+struct xrpc_server_config {
+  struct xrpc_transport_config *tcfg;
+  struct xrpc_io_system_config *iocfg;
 };
 
 /*
@@ -166,7 +180,7 @@ typedef int (*xrpc_handler_fn)(const struct xrpc_request *req,
  * @return 0 on success, -1 on error.
  */
 int xrpc_server_create(struct xrpc_server **srv,
-                       const struct xrpc_transport_config *cfg);
+                       const struct xrpc_server_config *cfg);
 
 // Register handler flags
 enum xrpc_handler_register_flags {

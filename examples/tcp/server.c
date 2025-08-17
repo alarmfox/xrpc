@@ -72,10 +72,12 @@ static int dot_product_handler(const struct xrpc_request *req,
 
 int main(void) {
   struct xrpc_server *srv = NULL;
-  struct xrpc_transport_config cfg =
+  struct xrpc_transport_config tcfg =
       XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
+  struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING};
+  struct xrpc_server_config cfg = {.tcfg = &tcfg, .iocfg = &iocfg};
 
-  cfg.config.tcp.nonblocking = false;
+  tcfg.config.tcp.nonblocking = false;
 
   if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");

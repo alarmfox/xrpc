@@ -3,43 +3,22 @@
 
 #include "xrpc/debug.h"
 #include "xrpc/error.h"
+#include "xrpc/io.h"
 #include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
-#define MAX_HANDLERS 128
+#define MAX_HANDLERS 64
 #define MAX_REQUEST_SIZE (1024 * 1024 * 4) // 4M
-
-/*
- * Macro to ease up the error handling of the request.
- * The error basically means sending an error state in the response error and
- * mark the request as error.
- */
-#define send_error(ctx_, err_)                                                 \
-  do {                                                                         \
-    ctx_->response_header->status = err_;                                      \
-    ctx_->response_header->sz = 0;                                             \
-    ctx_->response_header->reqid = rctx->request_header->reqid;                \
-    goto send;                                                                 \
-  } while (0)
-
-static bool running = false;
 
 struct xrpc_server {
   xrpc_handler_fn handlers[MAX_HANDLERS];
   struct xrpc_transport *transport;
+  struct xrpc_io_system *ios;
 };
 
 struct xrpc_request_context {
-  struct xrpc_transport_connection *tconn;
-
-  enum {
-    XRPC_PROTO_READING_HEADER,
-    XRPC_PROTO_READING_BODY,
-    XRPC_PROTO_PROCESSING,
-    XRPC_PROTO_ERROR,
-    XRPC_PROTO_WRITING_HEADER,
-    XRPC_PROTO_WRITING_BODY,
-  } state;
+  struct xrpc_server *srv;
+  struct xrpc_connection *conn;
 
   struct xrpc_request_header *request_header;
   uint8_t *request_data;
@@ -48,24 +27,34 @@ struct xrpc_request_context {
   uint8_t *response_data;
 };
 
-static int
-handle_all_requests_on_connection(struct xrpc_server *srv,
-                                  struct xrpc_transport_connection *tconn);
+static int handle_all_requests_on_connection(struct xrpc_server *srv,
+                                             struct xrpc_connection *tconn);
+static void header_read_complete(struct xrpc_io_system *io,
+                                 struct xrpc_io_operation *op);
 
-// This map stores different transports. For now this is onyl for supported
+static void body_read_complete(struct xrpc_io_system *io,
+                               struct xrpc_io_operation *op);
+static void response_write_complete(struct xrpc_io_system *io,
+                                    struct xrpc_io_operation *op);
+// This map stores different transports. For now this is only for supported
 // transport of this library. In future, a "register" method could be provided.
 static const struct xrpc_transport_ops *transport_ops_map[] = {
-    [XRPC_TRANSPORT_UNIX] = &xrpc_transport_unix_ops,
     [XRPC_TRANSPORT_TCP] = &xrpc_transport_tcp_ops,
-    [XRPC_TRANSPORT_TLS] = &xrpc_transport_tls_ops,
+};
+
+// This map stores io systems . For now this is only for supported
+// io systems of this library. In future, a "register" method could be provided.
+static const struct xrpc_io_system_ops *io_ops_map[] = {
+    [XRPC_IO_SYSTEM_BLOCKING] = &xrpc_blocking_ops,
 };
 
 int xrpc_server_create(struct xrpc_server **srv,
-                       const struct xrpc_transport_config *cfg) {
+                       const struct xrpc_server_config *cfg) {
 
   int ret = XRPC_SUCCESS;
   struct xrpc_server *s = NULL;
   struct xrpc_transport *t = NULL;
+  struct xrpc_io_system *ios = NULL;
 
   if (!cfg)
     XRPC_PRINT_ERR_AND_RETURN("config is NULL", XRPC_API_ERR_INVALID_ARGS);
@@ -74,22 +63,35 @@ int xrpc_server_create(struct xrpc_server **srv,
   if (!s) XRPC_PRINT_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
 
   // Check if the transport is present in the transport_ops_map
-  if ((size_t)cfg->type >=
+  if ((size_t)cfg->tcfg->type >=
       sizeof(transport_ops_map) / sizeof(transport_ops_map[0]))
     return XRPC_API_ERR_INVALID_TRANSPORT;
 
   // Find the transport_ops table from the transport_ops_map and init the
   // transport
-  const struct xrpc_transport_ops *ops = transport_ops_map[cfg->type];
+  const struct xrpc_transport_ops *tops = transport_ops_map[cfg->tcfg->type];
 
-  if (ret = ops->init(&t, cfg), ret != XRPC_SUCCESS)
+  if (ret = tops->init(&t, cfg->tcfg), ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("cannot create transport", ret);
 
+  // Check if the transport is present in the transport_ops_map
+  if ((size_t)cfg->iocfg->type >= sizeof(io_ops_map) / sizeof(io_ops_map[0]))
+    return XRPC_API_ERR_INVALID_TRANSPORT;
+
+  // Find the `io_system_ops` table from the ios_map and init the
+  // I/O system.
+  const struct xrpc_io_system_ops *ops = io_ops_map[cfg->iocfg->type];
+
+  if (ret = ops->init(&ios, cfg->iocfg), ret != XRPC_SUCCESS)
+    XRPC_PRINT_ERR_AND_RETURN("cannot create I/O system", ret);
+
+  // Zero init the handlers
   for (size_t i = 0; i < MAX_HANDLERS; ++i) {
     s->handlers[i] = NULL;
   }
 
   s->transport = t;
+  s->ios = ios;
   *srv = s;
   return ret;
 }
@@ -115,11 +117,10 @@ int xrpc_server_register(struct xrpc_server *srv, const size_t op,
 int xrpc_server_run(struct xrpc_server *srv) {
   int ret = XRPC_SUCCESS;
 
-  struct xrpc_transport_connection *tconn = NULL;
-  running = true;
+  struct xrpc_connection *tconn = NULL;
 
-  while (running) {
-    if (ret = srv->transport->ops->accept_connection(srv->transport, &tconn),
+  while (1) {
+    if (ret = srv->transport->ops->accept(srv->transport, &tconn),
         ret != XRPC_SUCCESS)
       continue;
 
@@ -130,7 +131,7 @@ int xrpc_server_run(struct xrpc_server *srv) {
       XRPC_DEBUG_PRINT("error during connection: %d", ret);
     }
 
-    srv->transport->ops->close_connection(tconn);
+    srv->transport->ops->close(srv->transport, tconn);
     free(tconn);
     tconn = NULL;
   }
@@ -150,108 +151,131 @@ void xrpc_server_free(struct xrpc_server *srv) {
   }
 }
 
-static int
-handle_all_requests_on_connection(struct xrpc_server *srv,
-                                  struct xrpc_transport_connection *tconn) {
+static int handle_all_requests_on_connection(struct xrpc_server *srv,
+                                             struct xrpc_connection *conn) {
 
-  int ret;
-  struct xrpc_request request;
-  struct xrpc_response response;
-  bool stop = false;
+  bool running = true;
 
-  struct xrpc_request_context *rctx =
+  struct xrpc_request_context *ctx =
       malloc(sizeof(struct xrpc_request_context));
 
-  if (!rctx) return XRPC_API_ERR_ALLOC;
+  if (!ctx) return XRPC_API_ERR_ALLOC;
 
-  rctx->tconn = tconn;
-  rctx->request_header = malloc(sizeof(struct xrpc_request_header));
-  rctx->response_header = malloc(sizeof(struct xrpc_response_header));
-  rctx->state = XRPC_PROTO_READING_HEADER;
-  rctx->response_data = NULL;
+  ctx->request_header = malloc(sizeof(struct xrpc_request_header));
+  ctx->response_header = malloc(sizeof(struct xrpc_response_header));
+  ctx->response_data = NULL;
 
-  if (!rctx->request_header || !rctx->response_header)
-    return XRPC_API_ERR_ALLOC;
+  if (!ctx->request_header || !ctx->response_header) return XRPC_API_ERR_ALLOC;
 
-  while (!stop && running) {
-    // read the header
-    ret = srv->transport->ops->recv(rctx->tconn, (void *)rctx->request_header,
-                                    sizeof(struct xrpc_request_header));
+  while (running) {
+    struct xrpc_io_operation *op = malloc(sizeof(struct xrpc_io_operation));
+    op->type = XRPC_IO_READ;
+    op->conn = conn;
+    op->ctx = ctx;
+    op->buf = ctx->request_header;
+    op->len = sizeof(struct xrpc_request_header);
+    op->on_complete = header_read_complete;
 
-    if (ret != XRPC_SUCCESS) {
-      stop = true;
-      goto free;
-    }
+    srv->ios->ops->schedule_operation(srv->ios, op);
 
-    rctx->state = XRPC_PROTO_READING_BODY;
-    // prevent a DoS. A malicious client could make a very big request
-    if (rctx->request_header->sz > MAX_REQUEST_SIZE)
-      send_error(rctx, XRPC_RESPONSE_INVALID_PARAMS);
-
-    // read the request payload if any
-    if (rctx->request_header->sz > 0) {
-      rctx->request_data = malloc(rctx->request_header->sz);
-      if (!rctx->request_data) send_error(rctx, XRPC_RESPONSE_INTERNAL_ERROR);
-
-      ret = srv->transport->ops->recv(tconn, (void *)rctx->request_data,
-                                      rctx->request_header->sz);
-      if (ret != XRPC_SUCCESS) {
-        stop = true;
-        goto free;
-      }
-    }
-
-    rctx->state = XRPC_PROTO_PROCESSING;
-
-    // init response header
-    rctx->response_header->status = XRPC_RESPONSE_SUCCESS;
-    rctx->response_header->reqid = rctx->request_header->reqid;
-    rctx->response_header->op = rctx->request_header->op;
-
-    if (rctx->request_header->op < MAX_HANDLERS &&
-        srv->handlers[rctx->request_header->op]) {
-
-      request.hdr = rctx->request_header,
-      request.data = (const void *)rctx->request_data,
-
-      response.hdr = rctx->response_header;
-      response.data = NULL;
-
-      if (srv->handlers[rctx->request_header->op](&request, &response) !=
-          XRPC_SUCCESS) {
-        rctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
-      }
-      rctx->response_data = response.data;
-    } else {
-      rctx->response_header->status = XRPC_RESPONSE_UNSUPPORTED_HANDLER;
-      rctx->response_header->sz = 0;
-    }
-
-  send:
-    rctx->state = XRPC_PROTO_WRITING_HEADER;
-    // send header
-    ret = srv->transport->ops->send(tconn, (const void *)rctx->response_header,
-                                    sizeof(struct xrpc_response_header));
-
-    rctx->state = XRPC_PROTO_WRITING_BODY;
-    // send result
-    if (rctx->response_header->sz > 0) {
-      if (srv->transport->ops->send(tconn, (const void *)rctx->response_data,
-                                    rctx->response_header->sz) != XRPC_SUCCESS)
-        stop = true;
-    }
-
-  free:
-    if (rctx->request_data) {
-      free(rctx->request_data);
-      rctx->request_data = NULL;
-    }
-    if (rctx->response_data) {
-      free(rctx->response_data);
-      rctx->response_data = NULL;
-    }
+    free(op);
   }
-  free(rctx);
-  rctx = NULL;
+  free(ctx);
+  ctx = NULL;
   return XRPC_SUCCESS;
+}
+
+static void header_read_complete(struct xrpc_io_system *io,
+                                 struct xrpc_io_operation *op) {
+
+  struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
+
+  // prevent a DoS. A malicious client could make a very big request
+  if (ctx->request_header->sz > MAX_REQUEST_SIZE) {
+    op->type = XRPC_IO_WRITE;
+    op->len = sizeof(struct xrpc_response_header);
+    op->buf = ctx->response_header;
+    op->on_complete = 0;
+
+    ctx->response_header->status = XRPC_API_ERR_INVALID_ARGS;
+    io->ops->schedule_operation(io, op);
+    return;
+  }
+
+  // read the request payload if any
+  if (ctx->request_header->sz > 0) {
+    ctx->request_data = malloc(ctx->request_header->sz);
+    // TODO: send error
+    if (!ctx->request_data) {
+
+      op->type = XRPC_IO_WRITE;
+      op->len = sizeof(struct xrpc_response_header);
+      op->buf = ctx->response_header;
+      op->on_complete = 0;
+
+      ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
+      io->ops->schedule_operation(io, op);
+      return;
+    }
+
+    op->buf = ctx->request_data;
+    op->len = ctx->request_header->sz;
+    op->on_complete = body_read_complete;
+    io->ops->schedule_operation(io, op);
+    return;
+  }
+  body_read_complete(io, op);
+}
+
+static void body_read_complete(struct xrpc_io_system *io,
+                               struct xrpc_io_operation *op) {
+
+  (void)io;
+  struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
+  struct xrpc_request request;
+  struct xrpc_response response;
+
+  if (ctx->request_header->op < MAX_HANDLERS &&
+      ctx->srv->handlers[ctx->request_header->op]) {
+
+    request.hdr = ctx->request_header,
+    request.data = (const void *)ctx->request_data,
+
+    response.hdr = ctx->response_header;
+    response.data = NULL;
+
+    if (ctx->srv->handlers[ctx->request_header->op](&request, &response) !=
+        XRPC_SUCCESS) {
+      ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
+    }
+
+    ctx->response_data = response.data;
+  } else {
+    ctx->response_header->status = XRPC_RESPONSE_UNSUPPORTED_HANDLER;
+    ctx->response_header->sz = 0;
+  }
+
+  op->type = XRPC_IO_WRITE;
+  op->buf = ctx->response_header;
+  op->len = sizeof(struct xrpc_response_header) + ctx->response_header->sz;
+  op->on_complete = response_write_complete;
+}
+
+static void response_write_complete(struct xrpc_io_system *io,
+                                    struct xrpc_io_operation *op) {
+
+  (void)io;
+  struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
+
+  if (ctx->request_data) {
+    free(ctx->request_data);
+    ctx->request_data = NULL;
+  }
+  if (ctx->response_data) {
+    free(ctx->response_data);
+    ctx->response_data = NULL;
+  }
+
+  free(op);
+  op = NULL;
 }

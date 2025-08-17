@@ -21,8 +21,9 @@ endif
 
 CORE_SRCS = $(wildcard src/core/*.c)
 TRANSPORT_SRCS = $(wildcard src/transports/*.c)
+IO_SYSTEM_SRCS = $(wildcard src/io/*.c)
 
-ALL_SRCS = $(CORE_SRCS) $(TRANSPORT_SRCS)
+ALL_SRCS = $(CORE_SRCS) $(TRANSPORT_SRCS) $(IO_SYSTEM_SRCS)
 ALL_OBJS = $(ALL_SRCS:.c=.o)
 
 ## libxrpc.a: builds the library

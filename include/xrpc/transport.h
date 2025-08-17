@@ -1,22 +1,28 @@
 #ifndef __TRANSPORT_H
 #define __TRANSPORT_H
 
+/*
+ * The `xrpc_transport` abstraction provides method to manage low level
+ * connections and to read/write raw bytes.
+ *
+ */
 #include <stddef.h>
 
 // Forward declarations
 struct xrpc_transport;
-struct xrpc_transport_connection;
+struct xrpc_connection;
 struct xrpc_transport_config;
 
 /*
- * VTable approach to support different transports at runtime.
+ * Transport API. This is meant to be used directly by the server
  */
 struct xrpc_transport_ops {
   /*
-   * @brief Creates a new transport instance
+   * @brief Creates a new transport instance.
    *
    * This function creates a transport for the specific implementation. `args`
-   * must point to a valid configuration. See `include/xrpc/config.h`
+   * must point to a valid configuration. The `transport` is ready to accept
+   * connections.
    *
    * @param[in,out] t  Pointer to the transport instance allocated, if
    * successful
@@ -27,8 +33,8 @@ struct xrpc_transport_ops {
               const struct xrpc_transport_config *args);
 
   /*
-   * @brief Closes the server (no more requests are accepted) and frees
-   resources.
+   * @brief Closes the listening process (no more requests are accepted) and
+   frees resources.
 
    * @param[in] t  Pointer to the transport instance
    */
@@ -50,54 +56,67 @@ struct xrpc_transport_ops {
    * @retval  0  A new client was successfully accepted.
    * @retval -1  No new client available or an error occurred.
    */
-  int (*accept_connection)(struct xrpc_transport *t,
-                           struct xrpc_transport_connection **c);
-  /*
-   * @brief Release the client
-   *
-   * Frees the current client. Must be called after every connection
-   *
-   * @param[in,out] c  Pointer to the connection to close. This is freed during
-   * this call.
-   */
-  void (*close_connection)(struct xrpc_transport_connection *c);
+  int (*accept)(struct xrpc_transport *t, struct xrpc_connection **c);
 
+  /*
+   * @brief Closes the connection.
+   *
+   * This is implemented in the transport API because it allows connection
+   * pooling
+   *
+   * @param[in] t  Pointer to the transport instance.
+   * @param[in] c  Pointer to the connection to close.
+   */
+  void (*close)(struct xrpc_transport *t, struct xrpc_connection *c);
+};
+
+/*
+ * Connection operations. It is meant to be used by the I/O systems.
+ */
+struct xrpc_connection_ops {
   /**
-   * @brief Receive a request from the connected client.
+   * @brief Receives a len bytes from the connection.
    *
-   * Reads a complete `struct request` from the currently connected client.
-   * This function blocks until the full request is received or an error occurs.
+   * Attempts to read `len` bytes from the `conn` into *buf writing in
+   * `*bytes_read` the number of bytes read.
    *
-   * @param[in,out] conn   Pointer to the connection instance.
-   * @param[out] buf    Pointer to buffer to store received bytes.
-   * @param[in]  len    Number of bytes to read.
+   * @param[in,out] conn    Pointer to the connection instance.
+   * @param[out] buf        Pointer to buffer to store received bytes.
+   * @param[in]  len        Number of bytes to read.
+   * @param[out] bytes_read Number of bytes read
    *
    * @retval  0  Request successfully received.
    * @retval -1  An error occurred (including client disconnection).
    */
-  int (*recv)(struct xrpc_transport_connection *conn, void *buf, size_t len);
+  int (*recv)(struct xrpc_connection *conn, void *buf, size_t len,
+              size_t *bytes_read);
 
   /**
-   * @brief Send a response to the connected client.
+   * @brief Send a buf of `len` bytes on the connection.
    *
-   * Writes a complete `struct response` to the currently connected client.
-   * The function will marshal the response into network byte order before
-   * sending.
+   * Attempts to write `len` bytes to the connection from `buf` writing in
+   * `bytes_written` the number of bytes written.
    *
-   * @param[in,out] t  Pointer to the connection instance.
-   * @param[in]  buf   Pointer to buffer containing data to send.
-   * @param[in]  len   Number of bytes to send.
+   * @param[in,out] t           Pointer to the connection instance.
+   * @param[in]  buf            Pointer to buffer containing data to send.
+   * @param[in]  len            Number of bytes to send.
+   * @param[out] bytes_written  Number of bytes read
    *
    * @retval  0  Response successfully sent.
    * @retval -1  An error occurred while sending.
    */
-  int (*send)(struct xrpc_transport_connection *conn, const void *buf,
-              size_t len);
+  int (*send)(struct xrpc_connection *conn, const void *buf, size_t len,
+              size_t *bytes_written);
 };
 
 struct xrpc_transport {
   const struct xrpc_transport_ops *ops;
   void *data; // transport specific data
+};
+
+struct xrpc_connection {
+  const struct xrpc_connection_ops *ops;
+  void *data;
 };
 
 extern const struct xrpc_transport_ops xrpc_transport_unix_ops;

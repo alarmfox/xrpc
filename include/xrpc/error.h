@@ -6,6 +6,7 @@
  */
 
 #define XRPC_SUCCESS 0
+#define XRPC_TRANSPORT_WOULD_BLOCK 1
 
 /*
  * RPC API Server errors
@@ -61,5 +62,13 @@
 #define XRPC_TRANSPORT_ERR_INVALID_SEED -403
 #define XRPC_TRANSPORT_ERR_INVALID_SSL_CONFIG -404
 #define XRPC_TRANSPORT_ERR_SSL_SETUP_FAILED -405
+
+/*
+ * Blocking I/O system specific errors
+ *
+ * From -500 to -599
+ *
+ */
+#define XRPC_IO_SYSTEM_ERR_UNSUPPORTED_OPERATION -500
 
 #endif // !__ERROR_H
