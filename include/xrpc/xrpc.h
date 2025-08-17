@@ -77,7 +77,7 @@ struct __attribute__((packed)) xrpc_response {
  * path for the socket.
  *
  */
-struct xrpc_server_unix_config {
+struct xrpc_transport_unix_config {
   struct sockaddr_un addr;
 };
 
@@ -87,7 +87,7 @@ struct xrpc_server_unix_config {
  * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
  * and port.
  */
-struct xrpc_server_tcp_config {
+struct xrpc_transport_tcp_config {
   struct sockaddr_in addr;
 
   // TCP-specific options
@@ -116,7 +116,7 @@ struct xrpc_server_tcp_config {
  * TLS transport configuration struct. Contains sockaddr_in which contains IPv4
  * and port and the path to the certificate and the private key.
  */
-struct xrpc_server_tls_config {
+struct xrpc_transport_tls_config {
   const char *address;
   const char *port;
   const char *crt_path;
@@ -129,12 +129,12 @@ enum xrpc_transport_type {
   XRPC_TRANSPORT_TLS,
 };
 
-struct xrpc_server_config {
+struct xrpc_transport_config {
   enum xrpc_transport_type type;
   union {
-    struct xrpc_server_unix_config unix;
-    struct xrpc_server_tcp_config tcp;
-    struct xrpc_server_tls_config tls;
+    struct xrpc_transport_unix_config unix;
+    struct xrpc_transport_tcp_config tcp;
+    struct xrpc_transport_tls_config tls;
   } config;
 };
 
@@ -166,7 +166,7 @@ typedef int (*xrpc_handler_fn)(const struct xrpc_request *req,
  * @return 0 on success, -1 on error.
  */
 int xrpc_server_create(struct xrpc_server **srv,
-                       const struct xrpc_server_config *cfg);
+                       const struct xrpc_transport_config *cfg);
 
 // Register handler flags
 enum xrpc_handler_register_flags {

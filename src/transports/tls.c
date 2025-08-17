@@ -38,10 +38,10 @@ struct xrpc_transport_connection {
 
 static int
 xrpc_transport_server_tls_init(struct xrpc_transport **s,
-                               const struct xrpc_server_config *conf) {
+                               const struct xrpc_transport_config *conf) {
   int ret;
   const char *pers = "ssl_server";
-  const struct xrpc_server_tls_config *args = &conf->config.tls;
+  const struct xrpc_transport_tls_config *args = &conf->config.tls;
   struct xrpc_transport *t = malloc(sizeof(struct xrpc_transport));
   struct xrpc_transport_data *data = malloc(sizeof(struct xrpc_transport_data));
 

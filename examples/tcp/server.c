@@ -72,7 +72,7 @@ static int dot_product_handler(const struct xrpc_request *req,
 
 int main(void) {
   struct xrpc_server *srv = NULL;
-  struct xrpc_server_config cfg =
+  struct xrpc_transport_config cfg =
       XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
 
   cfg.config.tcp.nonblocking = false;

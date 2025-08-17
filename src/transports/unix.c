@@ -24,10 +24,10 @@ struct xrpc_transport_connection {
 
 static int
 xrpc_transport_server_unix_init(struct xrpc_transport **s,
-                                const struct xrpc_server_config *conf) {
+                                const struct xrpc_transport_config *conf) {
   int ret, fd;
 
-  const struct xrpc_server_unix_config *args = &conf->config.unix;
+  const struct xrpc_transport_unix_config *args = &conf->config.unix;
   struct xrpc_transport *t = malloc(sizeof(struct xrpc_transport));
   struct xrpc_transport_data *data = malloc(sizeof(struct xrpc_transport_data));
 

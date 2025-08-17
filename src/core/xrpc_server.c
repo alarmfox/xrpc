@@ -61,7 +61,7 @@ static const struct xrpc_transport_ops *transport_ops_map[] = {
 };
 
 int xrpc_server_create(struct xrpc_server **srv,
-                       const struct xrpc_server_config *cfg) {
+                       const struct xrpc_transport_config *cfg) {
 
   int ret = XRPC_SUCCESS;
   struct xrpc_server *s = NULL;

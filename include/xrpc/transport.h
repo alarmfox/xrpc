@@ -6,7 +6,7 @@
 // Forward declarations
 struct xrpc_transport;
 struct xrpc_transport_connection;
-struct xrpc_server_config;
+struct xrpc_transport_config;
 
 /*
  * VTable approach to support different transports at runtime.
@@ -23,7 +23,8 @@ struct xrpc_transport_ops {
    * @param[in] args   Pointer to a valid args struct
    *
    */
-  int (*init)(struct xrpc_transport **t, const struct xrpc_server_config *args);
+  int (*init)(struct xrpc_transport **t,
+              const struct xrpc_transport_config *args);
 
   /*
    * @brief Closes the server (no more requests are accepted) and frees

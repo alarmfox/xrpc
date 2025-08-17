@@ -24,8 +24,8 @@ struct xrpc_transport_connection {
   int fd;
 };
 
-static int xrpc_tcp_configure_socket(int fd,
-                                     const struct xrpc_server_tcp_config *c) {
+static int
+xrpc_tcp_configure_socket(int fd, const struct xrpc_transport_tcp_config *c) {
 
   int ret, opt;
   struct timeval timeout;
@@ -156,9 +156,9 @@ static int xrpc_tcp_configure_socket(int fd,
 
 static int
 xrpc_transport_server_tcp_init(struct xrpc_transport **s,
-                               const struct xrpc_server_config *config) {
+                               const struct xrpc_transport_config *config) {
   int ret, fd;
-  const struct xrpc_server_tcp_config *args = &config->config.tcp;
+  const struct xrpc_transport_tcp_config *args = &config->config.tcp;
 
   struct xrpc_transport *t = malloc(sizeof(struct xrpc_transport));
   struct xrpc_transport_data *data = malloc(sizeof(struct xrpc_transport_data));
