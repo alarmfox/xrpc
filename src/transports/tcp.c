@@ -24,8 +24,8 @@ struct xrpc_transport_connection {
   int fd;
 };
 
-static int configure_socket_opt(int fd,
-                                const struct xrpc_server_tcp_config *c) {
+static int xrpc_tcp_configure_socket(int fd,
+                                     const struct xrpc_server_tcp_config *c) {
 
   int ret, opt;
   struct timeval timeout;
@@ -35,8 +35,8 @@ static int configure_socket_opt(int fd,
     opt = 1;
     if (ret = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(int)),
         ret < 0)
-      _print_syscall_err_and_return("setsockopt TCP_NODELAY",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt TCP_NODELAY",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("TCP_NODELAY enabled");
   }
@@ -45,8 +45,8 @@ static int configure_socket_opt(int fd,
     opt = 1;
     if (ret = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(int)),
         ret < 0)
-      _print_syscall_err_and_return("setsockopt SO_REUSEADDR",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt SO_REUSEADDR",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("SO_REUSEADDR enabled");
   }
@@ -55,8 +55,8 @@ static int configure_socket_opt(int fd,
     opt = 1;
     if (ret = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(int)),
         ret < 0)
-      _print_syscall_err_and_return("setsockopt SO_REUSEPORT",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt SO_REUSEPORT",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("SO_REUSEPORT enabled");
   }
@@ -65,31 +65,31 @@ static int configure_socket_opt(int fd,
     opt = 1;
     if (ret = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(int)),
         ret < 0)
-      _print_syscall_err_and_return("setsockopt SO_KEEPALIVE",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt SO_KEEPALIVE",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     if (c->keepalive_idle > 0) {
       opt = c->keepalive_idle;
       if (ret = setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &opt, sizeof(int)),
           ret < 0)
-        _print_syscall_err_and_return("setsockopt TCP_KEEPIDLE",
-                                      XRPC_TRANSPORT_ERR_SOCKET);
+        XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt TCP_KEEPIDLE",
+                                          XRPC_TRANSPORT_ERR_SOCKET);
     }
 
     if (c->keepalive_interval > 0) {
       opt = c->keepalive_interval;
       if (ret = setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &opt, sizeof(int)),
           ret < 0)
-        _print_syscall_err_and_return("setsockopt TCP_KEEPINTVL",
-                                      XRPC_TRANSPORT_ERR_SOCKET);
+        XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt TCP_KEEPINTVL",
+                                          XRPC_TRANSPORT_ERR_SOCKET);
     }
 
     if (c->keepalive_probes > 0) {
       opt = c->keepalive_probes;
       if (ret = setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &opt, sizeof(int)),
           ret < 0)
-        _print_syscall_err_and_return("setsockopt TCP_KEEPCNT",
-                                      XRPC_TRANSPORT_ERR_SOCKET);
+        XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt TCP_KEEPCNT",
+                                          XRPC_TRANSPORT_ERR_SOCKET);
 
       XRPC_DEBUG_PRINT("Keepalive enabled: idle=%ds, interval=%ds, probes=%d",
                        c->keepalive_idle, c->keepalive_interval,
@@ -104,8 +104,8 @@ static int configure_socket_opt(int fd,
     if (ret = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
                          sizeof(struct timeval)),
         ret < 0)
-      _print_syscall_err_and_return("setsockopt SO_SNDTIMEO",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt SO_SNDTIMEO",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("SO_SNDTIMEO set to %d ms", c->send_timeout_ms);
   }
@@ -117,8 +117,8 @@ static int configure_socket_opt(int fd,
     if (ret = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
                          sizeof(struct timeval)),
         ret < 0)
-      _print_syscall_err_and_return("setsockopt SO_RCVTIMEO",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt SO_RCVTIMEO",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("SO_RCVTIMEO set to %d ms", c->recv_timeout_ms);
   }
@@ -127,8 +127,8 @@ static int configure_socket_opt(int fd,
     opt = c->send_buffer_size;
 
     if (ret = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &opt, sizeof(int)), ret < 0)
-      _print_syscall_err_and_return("setsockopt SO_SNDBUF",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt SO_SNDBUF",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("SO_SNDBUF set to %d bytes", c->send_buffer_size);
   }
@@ -137,8 +137,8 @@ static int configure_socket_opt(int fd,
     opt = c->recv_buffer_size;
 
     if (ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, sizeof(int)), ret < 0)
-      _print_syscall_err_and_return("setsockopt SO_RCVBUF",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt SO_RCVBUF",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("SO_RCVBUF set to %d bytes", c->recv_buffer_size);
   }
@@ -146,8 +146,8 @@ static int configure_socket_opt(int fd,
   if (c->nonblocking) {
     int flags = fcntl(fd, F_GETFL);
     if (ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK), ret < 0)
-      _print_syscall_err_and_return("fcntl O_NONBLOCK",
-                                    XRPC_TRANSPORT_ERR_SOCKET);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("fcntl O_NONBLOCK",
+                                        XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("O_NONBLOCK enabled");
   }
@@ -163,22 +163,23 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
   struct xrpc_transport *t = malloc(sizeof(struct xrpc_transport));
   struct xrpc_transport_data *data = malloc(sizeof(struct xrpc_transport_data));
 
-  if (!t) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
-  if (!data) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
+  if (!t) XRPC_PRINT_ERR_AND_RETURN("malloc error", XRPC_API_ERR_ALLOC);
+  if (!data) XRPC_PRINT_ERR_AND_RETURN("malloc error", XRPC_API_ERR_ALLOC);
 
   if (fd = socket(AF_INET, SOCK_STREAM, 0), fd < 0)
-    _print_syscall_err_and_return("socket", XRPC_TRANSPORT_ERR_SOCKET);
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("socket", XRPC_TRANSPORT_ERR_SOCKET);
 
-  if (ret = configure_socket_opt(fd, args), ret < 0)
-    _print_syscall_err_and_return("socket", XRPC_TRANSPORT_ERR_SOCKET);
+  if (ret = xrpc_tcp_configure_socket(fd, args), ret < 0)
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("socket", XRPC_TRANSPORT_ERR_SOCKET);
 
   ret = bind(fd, (const struct sockaddr *)&(args->addr),
              sizeof(struct sockaddr_in));
 
-  if (ret < 0) _print_syscall_err_and_return("bind", XRPC_TRANSPORT_ERR_BIND);
+  if (ret < 0)
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("bind", XRPC_TRANSPORT_ERR_BIND);
 
   if (ret = listen(fd, args->listen_backlog), ret < 0)
-    _print_syscall_err_and_return("listen", XRPC_TRANSPORT_ERR_LISTEN);
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("listen", XRPC_TRANSPORT_ERR_LISTEN);
 
   data->fd = fd;
   t->ops = &xrpc_transport_tcp_ops;
@@ -199,11 +200,11 @@ static int xrpc_transport_server_tcp_accept_connection(
 
   client_fd = accept(data->fd, (struct sockaddr *)&client, &client_len);
   if (client_fd < 0)
-    _print_syscall_err_and_return("accept", XRPC_TRANSPORT_ERR_ACCEPT);
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("accept", XRPC_TRANSPORT_ERR_ACCEPT);
 
   conn = malloc(sizeof(struct xrpc_transport_connection));
 
-  if (!conn) _print_syscall_err_and_return("malloc", XRPC_API_ERR_ALLOC);
+  if (!conn) XRPC_PRINT_SYSCALL_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
 
   conn->fd = client_fd;
 
@@ -223,7 +224,7 @@ xrpc_transport_server_tcp_recv(struct xrpc_transport_connection *conn, void *b,
     if (n == 0) return XRPC_TRANSPORT_ERR_READ_CONN_CLOSED;
     if (n < 0) {
       if (errno == EINTR) continue;
-      _print_syscall_err_and_return("read", XRPC_TRANSPORT_ERR_READ);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("read", XRPC_TRANSPORT_ERR_READ);
     }
     tot_read += n;
   } while (tot_read < s);
@@ -241,7 +242,7 @@ xrpc_transport_server_tcp_send(struct xrpc_transport_connection *conn,
   do {
     n = write(conn->fd, tmp + tot_write, l - tot_write);
     if (n <= 0)
-      _print_syscall_err_and_return("write", XRPC_TRANSPORT_ERR_WRITE);
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
 
     tot_write += n;
   } while (tot_write < l);
@@ -260,7 +261,6 @@ static void xrpc_transport_server_tcp_free(struct xrpc_transport *t) {
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
   if (data->fd > 0) close(data->fd);
   free(data);
-  data = NULL;
 }
 
 // VTable for TCP operations

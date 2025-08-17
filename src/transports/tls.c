@@ -45,7 +45,7 @@ xrpc_transport_server_tls_init(struct xrpc_transport **s,
   struct xrpc_transport *t = malloc(sizeof(struct xrpc_transport));
   struct xrpc_transport_data *data = malloc(sizeof(struct xrpc_transport_data));
 
-  if (!t) _print_err_and_return("malloc error", XRPC_API_ERR_ALLOC);
+  if (!t) XRPC_PRINT_ERR_AND_RETURN("malloc error", XRPC_API_ERR_ALLOC);
 
   // init block
   mbedtls_net_init(&data->fd);
@@ -62,41 +62,41 @@ xrpc_transport_server_tls_init(struct xrpc_transport **s,
                               (unsigned char *)pers, strlen(pers));
 
   if (ret != 0)
-    _print_mbedtls_err_and_return("mbedtls_ctr_drbg_seed", ret,
-                                  XRPC_TRANSPORT_ERR_INVALID_SEED);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_ctr_drbg_seed", ret,
+                                      XRPC_TRANSPORT_ERR_INVALID_SEED);
 
   ret = mbedtls_x509_crt_parse_file(&data->srvcert, args->crt_path);
   if (ret != 0)
-    _print_mbedtls_err_and_return("mbedtls_x509_crt_parse_file", ret,
-                                  XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_x509_crt_parse_file", ret,
+                                      XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE);
 
   ret = mbedtls_pk_parse_keyfile(&data->pkey, args->key_path, NULL, 0, 0);
   if (ret != 0)
-    _print_mbedtls_err_and_return("mbedtls_pk_parse_keyfile", ret,
-                                  XRPC_TRANSPORT_ERR_INVALID_KEY);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_pk_parse_keyfile", ret,
+                                      XRPC_TRANSPORT_ERR_INVALID_KEY);
 
   ret = mbedtls_net_bind(&data->fd, args->address, args->port,
                          MBEDTLS_NET_PROTO_TCP);
 
   if (ret != 0)
-    _print_mbedtls_err_and_return("mbedtls_net_bind", ret,
-                                  XRPC_TRANSPORT_ERR_BIND);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_net_bind", ret,
+                                      XRPC_TRANSPORT_ERR_BIND);
 
   ret = mbedtls_ssl_config_defaults(&data->conf, MBEDTLS_SSL_IS_SERVER,
                                     MBEDTLS_SSL_TRANSPORT_STREAM,
                                     MBEDTLS_SSL_PRESET_DEFAULT);
 
   if (ret != 0)
-    _print_mbedtls_err_and_return("mbedtls_ssl_config_defaults", ret,
-                                  XRPC_TRANSPORT_ERR_INVALID_SSL_CONFIG);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_ssl_config_defaults", ret,
+                                      XRPC_TRANSPORT_ERR_INVALID_SSL_CONFIG);
 
   mbedtls_ssl_conf_rng(&data->conf, mbedtls_ctr_drbg_random, &data->ctr_drbg);
   mbedtls_ssl_conf_ca_chain(&data->conf, data->srvcert.next, NULL);
 
   if ((ret = mbedtls_ssl_conf_own_cert(&data->conf, &data->srvcert,
                                        &data->pkey)) != 0)
-    _print_mbedtls_err_and_return("mbedtls_ssl_conf_own_cert", ret,
-                                  XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_ssl_conf_own_cert", ret,
+                                      XRPC_TRANSPORT_ERR_INVALID_CERTIFICATE);
 
   t->data = data;
   *s = t;
@@ -113,23 +113,23 @@ static int xrpc_transport_server_tls_accept_connection(
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
 
   if ((ret = mbedtls_ssl_setup(&ssl, &data->conf)) != 0)
-    _print_mbedtls_err_and_return("mbedtls_ssl_setup", ret,
-                                  XRPC_TRANSPORT_ERR_SSL_SETUP_FAILED);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_ssl_setup", ret,
+                                      XRPC_TRANSPORT_ERR_SSL_SETUP_FAILED);
   mbedtls_net_init(&fd);
   mbedtls_ssl_init(&ssl);
 
   ret = mbedtls_net_accept(&data->fd, &fd, NULL, 0, NULL);
 
   if (ret != 0)
-    _print_mbedtls_err_and_return("mbedtls_net_accept", ret,
-                                  XRPC_TRANSPORT_ERR_ACCEPT);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_net_accept", ret,
+                                      XRPC_TRANSPORT_ERR_ACCEPT);
 
   mbedtls_ssl_set_bio(&ssl, &fd, mbedtls_net_send, mbedtls_net_recv, NULL);
 
   while ((ret = mbedtls_ssl_handshake(&ssl)) != 0) {
     if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-      _print_mbedtls_err_and_return("mbedtls_ssl_handshake", ret,
-                                    XRPC_TRANSPORT_ERR_HANDSHAKE_FAILED);
+      XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_ssl_handshake", ret,
+                                        XRPC_TRANSPORT_ERR_HANDSHAKE_FAILED);
     }
   }
 
@@ -157,20 +157,20 @@ xrpc_transport_server_tls_recv(struct xrpc_transport_connection *conn, void *b,
     if (n <= 0) {
       switch (n) {
       case MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY:
-        _print_err_and_return("connection closed by the peer",
-                              XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
+        XRPC_PRINT_ERR_AND_RETURN("connection closed by the peer",
+                                  XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
 
       case MBEDTLS_ERR_NET_CONN_RESET:
-        _print_err_and_return("connection reset by the peer",
-                              XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
+        XRPC_PRINT_ERR_AND_RETURN("connection reset by the peer",
+                                  XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
 
       case 0:
-        _print_err_and_return("connection closed",
-                              XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
+        XRPC_PRINT_ERR_AND_RETURN("connection closed",
+                                  XRPC_TRANSPORT_ERR_READ_CONN_CLOSED);
 
       default:
-        _print_mbedtls_err_and_return("mbedtls_ssl_read", (int)n,
-                                      XRPC_TRANSPORT_ERR_READ);
+        XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_ssl_read", (int)n,
+                                          XRPC_TRANSPORT_ERR_READ);
       }
 
       break;
@@ -189,8 +189,8 @@ xrpc_transport_server_tls_send(struct xrpc_transport_connection *conn,
   unsigned char *tmp = (unsigned char *)b;
 
   while ((n = mbedtls_ssl_write(&conn->ssl, tmp, l)) <= 0)
-    _print_mbedtls_err_and_return("mbedtls_ssl_write", n,
-                                  XRPC_TRANSPORT_ERR_WRITE);
+    XRPC_PRINT_MBEDTLS_ERR_AND_RETURN("mbedtls_ssl_write", n,
+                                      XRPC_TRANSPORT_ERR_WRITE);
 
   return XRPC_SUCCESS;
 }

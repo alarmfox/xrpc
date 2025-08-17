@@ -67,10 +67,11 @@ int xrpc_server_create(struct xrpc_server **srv,
   struct xrpc_server *s = NULL;
   struct xrpc_transport *t = NULL;
 
-  if (!cfg) _print_err_and_return("config is NULL", XRPC_API_ERR_INVALID_ARGS);
+  if (!cfg)
+    XRPC_PRINT_ERR_AND_RETURN("config is NULL", XRPC_API_ERR_INVALID_ARGS);
 
   s = malloc(sizeof(struct xrpc_server));
-  if (!s) _print_err_and_return("malloc", XRPC_API_ERR_ALLOC);
+  if (!s) XRPC_PRINT_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
 
   // Check if the transport is present in the transport_ops_map
   if ((size_t)cfg->type >=
@@ -82,7 +83,7 @@ int xrpc_server_create(struct xrpc_server **srv,
   const struct xrpc_transport_ops *ops = transport_ops_map[cfg->type];
 
   if (ret = ops->init(&t, cfg), ret != XRPC_SUCCESS)
-    _print_err_and_return("cannot create transport", ret);
+    XRPC_PRINT_ERR_AND_RETURN("cannot create transport", ret);
 
   for (size_t i = 0; i < MAX_HANDLERS; ++i) {
     s->handlers[i] = NULL;
@@ -97,14 +98,15 @@ int xrpc_server_register(struct xrpc_server *srv, const size_t op,
                          xrpc_handler_fn handler, const int flags) {
 
   if (op >= MAX_HANDLERS)
-    _print_err_and_return("cannot register handler with op (out of range): %lu",
-                          XRPC_API_ERR_BAD_OPID, op);
+    XRPC_PRINT_ERR_AND_RETURN(
+        "cannot register handler with op (out of range): %lu",
+        XRPC_API_ERR_BAD_OPID, op);
 
   xrpc_handler_fn fn = srv->handlers[op];
 
   if (fn && !(flags & XRPC_RF_OVERWRITE))
-    _print_err_and_return("handler already registered at op=%lu",
-                          XRPC_API_ERR_HANDLER_ALREADY_REGISTERED, op);
+    XRPC_PRINT_ERR_AND_RETURN("handler already registered at op=%lu",
+                              XRPC_API_ERR_HANDLER_ALREADY_REGISTERED, op);
 
   srv->handlers[op] = handler;
   return XRPC_SUCCESS;

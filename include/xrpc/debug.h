@@ -14,13 +14,13 @@
 #endif
 
 #ifdef DEBUG
-#define _print_err_and_return(fmt, retcode, ...)                               \
+#define XRPC_PRINT_ERR_AND_RETURN(fmt, retcode, ...)                           \
   do {                                                                         \
     fprintf(stderr, "[XRPC-DEBUG] " fmt "\n", ##__VA_ARGS__);                  \
     return retcode;                                                            \
   } while (0)
 #else
-#define _print_err_and_return(fmt, ...)                                        \
+#define XRPC_PRINT_ERR_AND_RETURN(fmt, ...)                                    \
   do {                                                                         \
   } while (0)
 #endif
@@ -28,19 +28,19 @@
 /*
  * Print errno description and return given error code.
  * Usage:
- *    _print_syscall_err_and_return("bind", XRPC_ERR_BIND);
+ *    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("bind", XRPC_ERR_BIND);
  */
 #ifdef DEBUG
 #include <errno.h>
 #include <string.h>
-#define _print_syscall_err_and_return(syscall_name, retcode)                   \
+#define XRPC_PRINT_SYSCALL_ERR_AND_RETURN(syscall_name, retcode)               \
   do {                                                                         \
     fprintf(stderr, "[XRPC-DEBUG] %s failed: %s (errno=%d)\n", syscall_name,   \
             strerror(errno), errno);                                           \
     return (retcode);                                                          \
   } while (0)
 #else
-#define _print_syscall_err_and_return(syscall_name, retcode)                   \
+#define XRPC_PRINT_SYSCALL_ERR_AND_RETURN(syscall_name, retcode)               \
   do {                                                                         \
     return (retcode);                                                          \
   } while (0)
@@ -52,7 +52,7 @@
  */
 #ifdef DEBUG
 #include "mbedtls/error.h"
-#define _print_mbedtls_err_and_return(func_name, mbedtls_ret, retcode)         \
+#define XRPC_PRINT_MBEDTLS_ERR_AND_RETURN(func_name, mbedtls_ret, retcode)     \
   do {                                                                         \
     char _mbed_err_buf[128];                                                   \
     mbedtls_strerror(mbedtls_ret, _mbed_err_buf, sizeof(_mbed_err_buf));       \
@@ -61,7 +61,7 @@
     return (retcode);                                                          \
   } while (0)
 #else
-#define _print_mbedtls_err_and_return(func_name, mbedtls_ret, retcode)         \
+#define XRPC_PRINT_MBEDTLS_ERR_AND_RETURN(func_name, mbedtls_ret, retcode)     \
   do {                                                                         \
     return (retcode);                                                          \
   } while (0)
