@@ -7,8 +7,21 @@
 #include "xrpc/error.h"
 #include "xrpc/xrpc.h"
 
-#define OP_SUM 0x0
-#define OP_DOT_PROD 0x1
+#define OP_DUMMY 0x0
+#define OP_SUM 0x1
+#define OP_DOT_PROD 0x2
+
+static int dummy_handler(const struct xrpc_request *req,
+                         struct xrpc_response *res) {
+
+  res->hdr->status = XRPC_RESPONSE_SUCCESS;
+  res->hdr->sz = sizeof(uint64_t);
+
+  res->data = malloc(sizeof(uint64_t));
+  memcpy(res->data, req->data, sizeof(uint64_t));
+
+  return XRPC_SUCCESS;
+}
 
 /*
  * For demonstration purposes this sums just 2 uint64_t.
@@ -81,6 +94,12 @@ int main(void) {
 
   if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");
+    goto exit;
+  }
+
+  if (xrpc_server_register(srv, OP_DUMMY, dummy_handler, XRPC_RF_OVERWRITE) !=
+      XRPC_SUCCESS) {
+    printf("cannot register dummy handler\n");
     goto exit;
   }
 

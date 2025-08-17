@@ -154,8 +154,6 @@ void xrpc_server_free(struct xrpc_server *srv) {
 static int handle_all_requests_on_connection(struct xrpc_server *srv,
                                              struct xrpc_connection *conn) {
 
-  bool running = true;
-
   struct xrpc_request_context *ctx =
       malloc(sizeof(struct xrpc_request_context));
 
@@ -164,10 +162,11 @@ static int handle_all_requests_on_connection(struct xrpc_server *srv,
   ctx->request_header = malloc(sizeof(struct xrpc_request_header));
   ctx->response_header = malloc(sizeof(struct xrpc_response_header));
   ctx->response_data = NULL;
+  ctx->srv = srv;
 
   if (!ctx->request_header || !ctx->response_header) return XRPC_API_ERR_ALLOC;
 
-  while (running) {
+  while (1) {
     struct xrpc_io_operation *op = malloc(sizeof(struct xrpc_io_operation));
     op->type = XRPC_IO_READ;
     op->conn = conn;
@@ -177,8 +176,6 @@ static int handle_all_requests_on_connection(struct xrpc_server *srv,
     op->on_complete = header_read_complete;
 
     srv->ios->ops->schedule_operation(srv->ios, op);
-
-    free(op);
   }
   free(ctx);
   ctx = NULL;
@@ -189,6 +186,9 @@ static void header_read_complete(struct xrpc_io_system *io,
                                  struct xrpc_io_operation *op) {
 
   struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
+  ctx->response_header->status = XRPC_RESPONSE_SUCCESS;
+  ctx->response_header->reqid = ctx->request_header->reqid;
+  ctx->response_header->op = ctx->request_header->op;
 
   // prevent a DoS. A malicious client could make a very big request
   if (ctx->request_header->sz > MAX_REQUEST_SIZE) {
@@ -203,28 +203,28 @@ static void header_read_complete(struct xrpc_io_system *io,
   }
 
   // read the request payload if any
-  if (ctx->request_header->sz > 0) {
-    ctx->request_data = malloc(ctx->request_header->sz);
-    // TODO: send error
-    if (!ctx->request_data) {
+  if (ctx->request_header->sz == 0) {
+    body_read_complete(io, op);
+    return;
+  }
 
-      op->type = XRPC_IO_WRITE;
-      op->len = sizeof(struct xrpc_response_header);
-      op->buf = ctx->response_header;
-      op->on_complete = 0;
+  ctx->request_data = malloc(ctx->request_header->sz);
+  if (!ctx->request_data) {
 
-      ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
-      io->ops->schedule_operation(io, op);
-      return;
-    }
+    op->type = XRPC_IO_WRITE;
+    op->len = sizeof(struct xrpc_response_header);
+    op->buf = ctx->response_header;
+    op->on_complete = 0;
 
-    op->buf = ctx->request_data;
-    op->len = ctx->request_header->sz;
-    op->on_complete = body_read_complete;
+    ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
     io->ops->schedule_operation(io, op);
     return;
   }
-  body_read_complete(io, op);
+
+  op->buf = ctx->request_data;
+  op->len = ctx->request_header->sz;
+  op->on_complete = body_read_complete;
+  io->ops->schedule_operation(io, op);
 }
 
 static void body_read_complete(struct xrpc_io_system *io,
@@ -255,10 +255,33 @@ static void body_read_complete(struct xrpc_io_system *io,
     ctx->response_header->sz = 0;
   }
 
+  // Create single buffer for header + data
+  size_t total_len =
+      sizeof(struct xrpc_response_header) + ctx->response_header->sz;
+  uint8_t *write_buffer = malloc(total_len);
+
+  if (!write_buffer) {
+    // Handle error
+    return;
+  }
+
+  // Copy header first
+  memcpy(write_buffer, ctx->response_header,
+         sizeof(struct xrpc_response_header));
+
+  // Copy data if any
+  if (ctx->response_header->sz > 0 && ctx->response_data) {
+    memcpy(write_buffer + sizeof(struct xrpc_response_header),
+           ctx->response_data, ctx->response_header->sz);
+  }
+
+  // Schedule single write operation
   op->type = XRPC_IO_WRITE;
-  op->buf = ctx->response_header;
-  op->len = sizeof(struct xrpc_response_header) + ctx->response_header->sz;
+  op->buf = write_buffer;
+  op->len = total_len;
   op->on_complete = response_write_complete;
+
+  io->ops->schedule_operation(io, op);
 }
 
 static void response_write_complete(struct xrpc_io_system *io,
@@ -266,6 +289,11 @@ static void response_write_complete(struct xrpc_io_system *io,
 
   (void)io;
   struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
+
+  if (op->buf) {
+    free(op->buf);
+    op->buf = NULL;
+  }
 
   if (ctx->request_data) {
     free(ctx->request_data);
