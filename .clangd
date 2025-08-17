@@ -2,4 +2,5 @@ CompileFlags:
   Add:
     - "-Iinclude/"
     - "-Iexternal/mbedtls/include"
+    - "-DDEBUG"
   CompilationDatabase: .
