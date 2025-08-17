@@ -29,6 +29,8 @@ static int sum_handler(const struct xrpc_request *req,
   // write the header and populate the result
   res->hdr->status = XRPC_RESPONSE_SUCCESS;
   res->hdr->sz = sizeof(uint64_t);
+  res->data = malloc(res->hdr->sz);
+
   memcpy(res->data, &c, sizeof(uint64_t));
 
   return XRPC_SUCCESS;
@@ -61,41 +63,43 @@ static int dot_product_handler(const struct xrpc_request *req,
 
   res->hdr->status = XRPC_RESPONSE_SUCCESS;
   res->hdr->sz = sizeof(uint64_t);
+  res->data = malloc(res->hdr->sz);
 
   memcpy(res->data, &prod, sizeof(uint64_t));
-  res->hdr->sz = sizeof(uint64_t);
 
   return XRPC_SUCCESS;
 }
 
 int main(void) {
-  struct xrpc_server *rs = NULL;
+  struct xrpc_server *srv = NULL;
   struct xrpc_server_config cfg =
       XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
 
   cfg.config.tcp.nonblocking = false;
 
-  if (xrpc_server_create(&rs, &cfg) != XRPC_SUCCESS) {
+  if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");
     goto exit;
   }
 
-  if (xrpc_server_register(rs, OP_SUM, sum_handler, XRPC_RF_OVERWRITE) !=
+  if (xrpc_server_register(srv, OP_SUM, sum_handler, XRPC_RF_OVERWRITE) !=
       XRPC_SUCCESS) {
     printf("cannot register sum handler\n");
     goto exit;
   }
 
-  if (xrpc_server_register(rs, OP_DOT_PROD, dot_product_handler,
+  if (xrpc_server_register(srv, OP_DOT_PROD, dot_product_handler,
                            XRPC_RF_OVERWRITE) != XRPC_SUCCESS) {
     printf("cannot register dot product handler\n");
     goto exit;
   }
 
-  while (xrpc_server_run(rs) == 0) {}
+  xrpc_server_run(srv);
 
 exit:
-  xrpc_server_free(rs);
+  xrpc_server_free(srv);
+  free(srv);
+  srv = NULL;
 
   return 0;
 }
