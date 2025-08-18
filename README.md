@@ -10,6 +10,21 @@ The goal is to explore and compare different implementations: from raw TCP socke
 ## Usage (server only)
 
 The goal of the library is to provide a minimal API to integrate RPC functionalities into an existing project.
+Build the library:
+
+```sh
+make
+```
+
+The build process outputs `libxrpc.a` in the root directory of the project. 
+Link it in your projects and copy `include/` for API declaration.
+
+```sh
+cp -r include/ /path/to/project/include/
+cp libxrpc.a /path/to/project/lib
+```
+
+### Example
 The following example is based from [server.c](./examples/tcp/server.c).
 ```c
 // include library
@@ -41,6 +56,8 @@ int main(void) {
 
   // set non blocking to false
   tcfg.config.tcp.nonblocking = false;
+  // wait for 100ms
+  tcfg.config.tcp.accept_timeout_ms = 100;
 
   // create the server
   if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
