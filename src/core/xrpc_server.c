@@ -20,6 +20,8 @@ struct xrpc_request_context {
     XRPC_REQ_STATE_COMPLETED,
   } state;
 
+  int last_error;
+  bool close_connection;
   struct xrpc_server *srv;
   struct xrpc_connection *conn;
 
@@ -145,7 +147,12 @@ int xrpc_server_run(struct xrpc_server *srv) {
       XRPC_DEBUG_PRINT("received connection");
       ctx = create_request_context(srv, conn);
 
-      if (!ctx) goto release_conn;
+      if (!ctx) {
+        srv->transport->ops->close(srv->transport, conn);
+        free(conn);
+        conn = NULL;
+        continue;
+      }
 
       enqueue_context(srv, ctx);
     }
@@ -171,12 +178,6 @@ int xrpc_server_run(struct xrpc_server *srv) {
 
       advance_request_state_machine(ctx);
     }
-    continue;
-
-  release_conn:
-    srv->transport->ops->close(srv->transport, conn);
-    free(conn);
-    conn = NULL;
   }
 
   return ret;
@@ -206,6 +207,8 @@ create_request_context(struct xrpc_server *srv, struct xrpc_connection *conn) {
 
   if (!ctx) return NULL;
 
+  ctx->last_error = XRPC_SUCCESS;
+  ctx->close_connection = false;
   ctx->request_header = malloc(sizeof(struct xrpc_request_header));
   ctx->response_header = malloc(sizeof(struct xrpc_response_header));
   ctx->response_data = NULL;
@@ -307,7 +310,11 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
     ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
     break;
   case XRPC_REQ_STATE_COMPLETED:
+    if (ctx->close_connection) {
+      ctx->srv->transport->ops->close(ctx->srv->transport, ctx->conn);
+    }
     free_context(ctx);
+    ctx = NULL;
     break;
   }
   }
@@ -315,6 +322,13 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
 static void io_request_completed(struct xrpc_io_operation *op, int status) {
   (void)status;
   struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
+  // check for transport errors
+  if (status == XRPC_TRANSPORT_ERR_CONN_CLOSED ||
+      status == XRPC_TRANSPORT_ERR_WRITE) {
+    ctx->state = XRPC_REQ_STATE_COMPLETED;
+    ctx->last_error = status;
+    ctx->close_connection = true;
+  }
 
   switch (ctx->state) {
     // on header complete schedule body read if any otherwise process the

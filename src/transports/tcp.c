@@ -256,9 +256,10 @@ static int xrpc_transport_server_tcp_recv(struct xrpc_connection *conn, void *b,
 
   n = read(cdata->fd, b, len);
 
-  if (n == 0) return XRPC_TRANSPORT_ERR_READ_CONN_CLOSED;
+  if (n == 0) return XRPC_TRANSPORT_ERR_CONN_CLOSED;
   if (n < 0) {
-    if (errno == EINTR || errno == EAGAIN) return XRPC_TRANSPORT_WOULD_BLOCK;
+    if (errno == EAGAIN || errno == EWOULDBLOCK)
+      return XRPC_TRANSPORT_WOULD_BLOCK;
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("read", XRPC_TRANSPORT_ERR_READ);
   }
 
@@ -296,6 +297,8 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
     cdata->fd = 1;
   }
 
+  free(conn);
+  conn = NULL;
   free(cdata);
   cdata = NULL;
 }

@@ -30,7 +30,7 @@ static int xprc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
     while (transferred_bytes < op->len) {
       ret = op->conn->ops->recv(op->conn, op->buf + transferred_bytes,
                                 op->len - transferred_bytes, &n);
-      if (ret != XRPC_SUCCESS) return ret;
+      if (ret != XRPC_SUCCESS) break;
       transferred_bytes += n;
     }
     break;
@@ -38,7 +38,7 @@ static int xprc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
     while (transferred_bytes < op->len) {
       ret = op->conn->ops->send(op->conn, op->buf + transferred_bytes,
                                 op->len - transferred_bytes, &n);
-      if (ret != XRPC_SUCCESS) return ret;
+      if (ret != XRPC_SUCCESS) break;
       transferred_bytes += n;
     }
     break;
@@ -47,7 +47,7 @@ static int xprc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
 
   if (op->on_complete) op->on_complete(op, ret);
 
-  return ret;
+  return XRPC_SUCCESS;
 }
 
 static int xrpc_io_blocking_poll(struct xrpc_io_system *xio) {
