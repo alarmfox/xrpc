@@ -210,7 +210,7 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
   cdata = malloc(sizeof(struct xrpc_connection_data));
   conn = malloc(sizeof(struct xrpc_connection));
 
-  if (!conn || cdata)
+  if (!conn || !cdata)
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
 
   cdata->fd = client_fd;
