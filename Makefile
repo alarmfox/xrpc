@@ -6,8 +6,6 @@ ARFLAGS = rcs
 CFLAGS = -std=c99 -Wall -Wextra -fPIC
 CFLAGS += -Iinclude/ 
 
-BUILD_DIR = build
-
 ifeq ($(DEBUG),1)
 CFLAGS += -O0 -g3 -DDEBUG
 else
