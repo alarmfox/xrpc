@@ -167,8 +167,14 @@ int xrpc_server_run(struct xrpc_server *srv) {
     while ((n--) > 0 && dequeue_context(srv, &ctx) == 0) {
       // if the underlying connection is no longer valid. Put the request for
       // completion and free the resource completed body reading, we are ready
-      if (!connection_is_valid(ctx->conn)) {
+      if (!connection_is_valid(ctx->conn) ||
+          ctx->state == XRPC_REQ_STATE_COMPLETED) {
+        XRPC_DEBUG_PRINT(
+            "Context has invalid connection, marking for completion");
         ctx->state = XRPC_REQ_STATE_COMPLETED;
+        free_request_context(ctx);
+        ctx = NULL;
+        continue;
       }
       // to read another request while processing. This could be more helpful if
       // we add a worker thread.
@@ -235,12 +241,16 @@ static int create_request_context(struct xrpc_server *srv,
   connection_ref(srv->transport, conn);
 
   *ctx = _ctx;
+  XRPC_DEBUG_PRINT("Created context for connection %lu", conn->id);
 
   return XRPC_SUCCESS;
 }
 
 static void free_request_context(struct xrpc_request_context *ctx) {
   if (!ctx) return;
+
+  uint64_t conn_id = ctx->conn ? ctx->conn->id : 0;
+
   if (ctx->request_header) free(ctx->request_header);
   if (ctx->response_header) free(ctx->response_header);
   if (ctx->request_data) free(ctx->request_data);
@@ -249,8 +259,8 @@ static void free_request_context(struct xrpc_request_context *ctx) {
   // clear connection if ref_count is 0
   if (ctx->conn) connection_unref(ctx->srv->transport, ctx->conn);
 
+  XRPC_DEBUG_PRINT("Freed context for connection %lu", conn_id);
   ctx->conn = NULL;
-
   free(ctx);
 }
 
@@ -334,23 +344,32 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
     ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
     break;
   case XRPC_REQ_STATE_COMPLETED:
-    free_request_context(ctx);
-    ctx = NULL;
     break;
   }
   }
 }
 static void io_request_completed(struct xrpc_io_operation *op) {
   struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
-  // If transport there are errors, mark the connection for close, free reousces
-  // and don't enqueue. Signal all contexts holding the same connection to close
+  // If transport there are errors, mark the connection for close, free
+  // resources and skips to request completed which will trigger the cleanup
   if (op->status == XRPC_TRANSPORT_ERR_CONN_CLOSED ||
+      op->status == XRPC_TRANSPORT_ERR_READ ||
       op->status == XRPC_TRANSPORT_ERR_WRITE) {
+
+    XRPC_DEBUG_PRINT("Transport error: %d", op->status);
+
+    /* Clean up write buffer if needed */
     if (op->buf && ctx->state == XRPC_REQ_STATE_WRITE) free(op->buf);
+
     ctx->state = XRPC_REQ_STATE_COMPLETED;
     ctx->last_error = op->status;
     connection_mark_for_close(ctx->conn);
 
+    free(op);
+    op = NULL;
+
+    /* Enqueue once for cleanup - server loop will free it */
+    enqueue_context(ctx->srv, ctx);
     return;
   }
 
@@ -440,6 +459,7 @@ static int dequeue_context(struct xrpc_server *srv,
 
   return 0;
 }
+
 static ssize_t count_context(struct xrpc_server *srv) {
   ssize_t size = 0;
   if (srv->tail >= srv->head)
