@@ -91,6 +91,7 @@ int main(void) {
   struct xrpc_server_config cfg = {.tcfg = &tcfg, .iocfg = &iocfg};
 
   tcfg.config.tcp.nonblocking = false;
+  tcfg.config.tcp.accept_timeout_ms = 100;
 
   if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");

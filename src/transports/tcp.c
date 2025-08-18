@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -19,6 +20,8 @@ const struct xrpc_connection_ops xrpc_connection_tcp_ops;
 
 struct xrpc_transport_data {
   int fd;
+  int accept_timeout_ms;
+  bool nonblocking;
 };
 
 struct xrpc_connection_data {
@@ -183,6 +186,8 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("listen", XRPC_TRANSPORT_ERR_LISTEN);
 
   data->fd = fd;
+  data->accept_timeout_ms = args->accept_timeout_ms;
+  data->nonblocking = args->nonblocking;
   t->ops = &xrpc_transport_tcp_ops;
   t->data = data;
 
@@ -194,18 +199,40 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
                                             struct xrpc_connection **c) {
 
   int client_fd;
+  int ret;
   struct sockaddr_in client;
   socklen_t client_len = sizeof(struct sockaddr_in);
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
   struct xrpc_connection *conn = NULL;
   struct xrpc_connection_data *cdata = NULL;
 
-  client_fd = accept(data->fd, (struct sockaddr *)&client, &client_len);
+  // If the socket is blocking and `accept_timeout > 0`, we
+  //  need to use `poll` to exit after a certain `accept_timeout`. Otherwise we
+  //  can use the normal accept.
 
-  if (client_fd < 0 && (errno == EWOULDBLOCK || errno == EAGAIN))
-    return XRPC_TRANSPORT_WOULD_BLOCK;
-  else if (client_fd < 0)
-    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("accept", XRPC_TRANSPORT_ERR_ACCEPT);
+  if (!data->nonblocking && data->accept_timeout_ms > 0) {
+    struct pollfd pfds[1];
+
+    pfds[0].fd = data->fd;
+    pfds[0].events = POLLIN;
+
+    // susped for at most data->accept_timeout
+    ret = poll(pfds, 1, data->accept_timeout_ms);
+    if (ret < 0)
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("poll", XRPC_TRANSPORT_ERR_ACCEPT);
+    if (pfds[0].revents & POLLIN) {
+      // normally accept -> we have been told that there is data
+      client_fd = accept(data->fd, (struct sockaddr *)&client, &client_len);
+    } else
+      return XRPC_TRANSPORT_WOULD_BLOCK;
+  } else {
+    client_fd = accept(data->fd, (struct sockaddr *)&client, &client_len);
+
+    if (client_fd < 0 && (errno == EWOULDBLOCK || errno == EAGAIN))
+      return XRPC_TRANSPORT_WOULD_BLOCK;
+    else if (client_fd < 0)
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("accept", XRPC_TRANSPORT_ERR_ACCEPT);
+  }
 
   cdata = malloc(sizeof(struct xrpc_connection_data));
   conn = malloc(sizeof(struct xrpc_connection));

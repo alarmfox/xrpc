@@ -108,6 +108,11 @@ struct xrpc_transport_tcp_config {
 
   // Non blocking mode
   bool nonblocking; // Set O_NONBLOCK
+
+  int accept_timeout_ms; // Puts a timeout (using `select()`) on the socket sot
+                         // that even if when blocking, we are allowed to run an
+                         // event loop. Set `0` to disable non blocking. This
+                         // parameter is ignored if `nonblocking = true`
 };
 
 /**
@@ -335,6 +340,7 @@ void xrpc_client_free(struct xrpc_client *cli);
       .send_buffer_size = -1,                                                  \
       .recv_buffer_size = -1,                                                  \
       .nonblocking = true,                                                     \
+      .accept_timeout_ms = 0,                                                  \
     }                                                                          \
   }
 
