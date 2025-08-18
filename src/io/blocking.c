@@ -21,6 +21,7 @@ static int xrpc_io_blocking_init(struct xrpc_io_system **xio,
 static int xprc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
                                                struct xrpc_io_operation *op) {
 
+  (void)xio;
   int ret = XRPC_SUCCESS;
   size_t transferred_bytes = 0, n = 0;
 
@@ -42,12 +43,9 @@ static int xprc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
     }
     break;
   }
-  default:
-    ret = XRPC_IO_SYSTEM_ERR_UNSUPPORTED_OPERATION;
-    break;
   }
 
-  if (op->on_complete) op->on_complete(xio, op);
+  if (op->on_complete) op->on_complete(op, ret);
 
   return ret;
 }

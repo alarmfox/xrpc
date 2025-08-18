@@ -264,6 +264,9 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
     close(cdata->fd);
     cdata->fd = 1;
   }
+
+  free(cdata);
+  cdata = NULL;
 }
 
 static void xrpc_transport_server_tcp_free(struct xrpc_transport *t) {
