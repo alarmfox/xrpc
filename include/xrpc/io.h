@@ -21,7 +21,8 @@ struct xrpc_io_operation {
   void *buf;
   size_t len;
 
-  void (*on_complete)(struct xrpc_io_operation *op, int status);
+  void (*on_complete)(struct xrpc_io_operation *op);
+  int status;
   void *ctx; // this should be the context data of the request
 };
 

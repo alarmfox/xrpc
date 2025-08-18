@@ -1,12 +1,14 @@
 #ifndef __TRANSPORT_H
 #define __TRANSPORT_H
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
 /*
  * The `xrpc_transport` abstraction provides method to manage low level
- * connections and to read/write raw bytes.
- *
+ * connections.
  */
-#include <stddef.h>
 
 // Forward declarations
 struct xrpc_transport;
@@ -109,18 +111,62 @@ struct xrpc_connection_ops {
               size_t *bytes_written);
 };
 
+struct xrpc_connection {
+  const struct xrpc_connection_ops *ops;
+  int ref_count;   // number of contexts that uses this connection
+  bool is_closed;  // connection is closed
+  bool is_closing; // connection marked for closing. Cannot be assigned to
+                   // contexts
+  uint64_t id;     // unique connection ID. Useful for connection pooling
+  void *data;
+};
+
 struct xrpc_transport {
   const struct xrpc_transport_ops *ops;
   void *data; // transport specific data
 };
 
-struct xrpc_connection {
-  const struct xrpc_connection_ops *ops;
-  void *data;
-};
-
-extern const struct xrpc_transport_ops xrpc_transport_unix_ops;
+/*
+ * Exporting VTables abstracting different transport implementation
+ *
+ */
 extern const struct xrpc_transport_ops xrpc_transport_tcp_ops;
-extern const struct xrpc_transport_ops xrpc_transport_tls_ops;
+
+/*
+ * Utilities to help managing the connection lifecycle
+ */
+
+static inline bool connection_is_valid(struct xrpc_connection *c) {
+  if (!c) return false;
+  if (c->is_closed || c->is_closing) return false;
+  return true;
+}
+
+static inline void connection_mark_for_close(struct xrpc_connection *c) {
+  if (!c) return;
+  c->is_closing = true;
+}
+
+static inline void connection_ref(struct xrpc_transport *t,
+                                  struct xrpc_connection *c) {
+  (void)t;
+  if (!c) return;
+
+  c->ref_count++;
+}
+
+static inline void connection_unref(struct xrpc_transport *t,
+                                    struct xrpc_connection *c) {
+  if (!c || !t) return;
+
+  c->ref_count--;
+
+  // if the ref_count <= 0 and the conn is closing close safely the underlying
+  // connection
+  if (c->ref_count <= 0 && c->is_closing) {
+    if (t->ops->close) t->ops->close(t, c);
+    c->is_closed = true;
+  }
+}
 
 #endif // !__TRANSPORT_H

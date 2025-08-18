@@ -45,7 +45,8 @@ static int xprc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
   }
   }
 
-  if (op->on_complete) op->on_complete(op, ret);
+  op->status = ret;
+  if (op->on_complete) op->on_complete(op);
 
   return XRPC_SUCCESS;
 }

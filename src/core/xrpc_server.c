@@ -21,7 +21,6 @@ struct xrpc_request_context {
   } state;
 
   int last_error;
-  bool close_connection;
   struct xrpc_server *srv;
   struct xrpc_connection *conn;
 
@@ -44,12 +43,15 @@ struct xrpc_server {
 };
 
 // Utils functions to manage xrpc_request_context lifecycle
-static struct xrpc_request_context *
-create_request_context(struct xrpc_server *srv, struct xrpc_connection *conn);
-static void free_context(struct xrpc_request_context *ctx);
+static int create_request_context(struct xrpc_server *srv,
+                                  struct xrpc_connection *conn,
+                                  struct xrpc_request_context **ctx);
+static void free_request_context(struct xrpc_request_context *ctx);
 static void advance_request_state_machine(struct xrpc_request_context *ctx);
 static void process(struct xrpc_request_context *ctx);
-static void io_request_completed(struct xrpc_io_operation *op, int status);
+static void io_request_completed(struct xrpc_io_operation *op);
+
+// Utils to manage xrpc_request_context queue
 static int enqueue_context(struct xrpc_server *srv,
                            struct xrpc_request_context *ctx);
 static int dequeue_context(struct xrpc_server *srv,
@@ -145,12 +147,10 @@ int xrpc_server_run(struct xrpc_server *srv) {
         ret == XRPC_SUCCESS) {
 
       XRPC_DEBUG_PRINT("received connection");
-      ctx = create_request_context(srv, conn);
-
-      if (!ctx) {
-        srv->transport->ops->close(srv->transport, conn);
-        free(conn);
-        conn = NULL;
+      ret = create_request_context(srv, conn, &ctx);
+      if (ret != XRPC_SUCCESS) {
+        XRPC_DEBUG_PRINT("Failed to create request context");
+        connection_mark_for_close(conn);
         continue;
       }
 
@@ -165,17 +165,25 @@ int xrpc_server_run(struct xrpc_server *srv) {
     ssize_t n = count_context(srv);
 
     while ((n--) > 0 && dequeue_context(srv, &ctx) == 0) {
-      // completed body reading, we are ready to read another request
-      // while processing. This could be more helpful if we add a worker thread.
+      // if the underlying connection is no longer valid. Put the request for
+      // completion and free the resource completed body reading, we are ready
+      if (!connection_is_valid(ctx->conn)) {
+        ctx->state = XRPC_REQ_STATE_COMPLETED;
+      }
+      // to read another request while processing. This could be more helpful if
+      // we add a worker thread.
       if (ctx->state == XRPC_REQ_STATE_PROCESS) {
         process(ctx);
         ctx->state = XRPC_REQ_STATE_WRITE;
 
-        // we are ready to read another request
-        struct xrpc_request_context *c = create_request_context(srv, conn);
-        enqueue_context(srv, c);
+        // we are ready to read another request.
+        // Limit the scope of this new _ctx;
+        {
+          struct xrpc_request_context *_ctx = NULL;
+          ret = create_request_context(srv, conn, &_ctx);
+          if (ret == XRPC_SUCCESS) enqueue_context(srv, _ctx);
+        }
       }
-
       advance_request_state_machine(ctx);
     }
   }
@@ -200,32 +208,48 @@ void xrpc_server_free(struct xrpc_server *srv) {
   }
 }
 
-static struct xrpc_request_context *
-create_request_context(struct xrpc_server *srv, struct xrpc_connection *conn) {
-  struct xrpc_request_context *ctx =
+static int create_request_context(struct xrpc_server *srv,
+                                  struct xrpc_connection *conn,
+                                  struct xrpc_request_context **ctx) {
+  // don't create context for closing connection, closed or invalid connections
+  if (!conn || !connection_is_valid(conn)) return XRPC_API_ERR_INVALID_CONN;
+
+  struct xrpc_request_context *_ctx =
       malloc(sizeof(struct xrpc_request_context));
 
-  if (!ctx) return NULL;
+  if (!ctx) return XRPC_API_ERR_ALLOC;
 
-  ctx->last_error = XRPC_SUCCESS;
-  ctx->close_connection = false;
-  ctx->request_header = malloc(sizeof(struct xrpc_request_header));
-  ctx->response_header = malloc(sizeof(struct xrpc_response_header));
-  ctx->response_data = NULL;
-  ctx->srv = srv;
-  ctx->conn = conn;
-  ctx->state = XRPC_REQ_STATE_READ_HEADER;
+  _ctx->last_error = XRPC_SUCCESS;
+  _ctx->request_header = malloc(sizeof(struct xrpc_request_header));
+  _ctx->response_header = malloc(sizeof(struct xrpc_response_header));
+  _ctx->request_data = NULL;
+  _ctx->response_data = NULL;
+  _ctx->srv = srv;
+  _ctx->conn = conn;
+  _ctx->state = XRPC_REQ_STATE_READ_HEADER;
 
-  if (!ctx->request_header || !ctx->response_header) return NULL;
-  return ctx;
+  if (!_ctx->request_header || !_ctx->response_header)
+    return XRPC_API_ERR_ALLOC;
+
+  // increment refernce count to the connection
+  connection_ref(srv->transport, conn);
+
+  *ctx = _ctx;
+
+  return XRPC_SUCCESS;
 }
 
-static void free_context(struct xrpc_request_context *ctx) {
+static void free_request_context(struct xrpc_request_context *ctx) {
   if (!ctx) return;
   if (ctx->request_header) free(ctx->request_header);
   if (ctx->response_header) free(ctx->response_header);
   if (ctx->request_data) free(ctx->request_data);
   if (ctx->response_data) free(ctx->response_data);
+
+  // clear connection if ref_count is 0
+  if (ctx->conn) connection_unref(ctx->srv->transport, ctx->conn);
+
+  ctx->conn = NULL;
 
   free(ctx);
 }
@@ -310,24 +334,24 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
     ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
     break;
   case XRPC_REQ_STATE_COMPLETED:
-    if (ctx->close_connection) {
-      ctx->srv->transport->ops->close(ctx->srv->transport, ctx->conn);
-    }
-    free_context(ctx);
+    free_request_context(ctx);
     ctx = NULL;
     break;
   }
   }
 }
-static void io_request_completed(struct xrpc_io_operation *op, int status) {
-  (void)status;
+static void io_request_completed(struct xrpc_io_operation *op) {
   struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
-  // check for transport errors
-  if (status == XRPC_TRANSPORT_ERR_CONN_CLOSED ||
-      status == XRPC_TRANSPORT_ERR_WRITE) {
+  // If transport there are errors, mark the connection for close, free reousces
+  // and don't enqueue. Signal all contexts holding the same connection to close
+  if (op->status == XRPC_TRANSPORT_ERR_CONN_CLOSED ||
+      op->status == XRPC_TRANSPORT_ERR_WRITE) {
+    if (op->buf && ctx->state == XRPC_REQ_STATE_WRITE) free(op->buf);
     ctx->state = XRPC_REQ_STATE_COMPLETED;
-    ctx->last_error = status;
-    ctx->close_connection = true;
+    ctx->last_error = op->status;
+    connection_mark_for_close(ctx->conn);
+
+    return;
   }
 
   switch (ctx->state) {
@@ -411,6 +435,7 @@ static int dequeue_context(struct xrpc_server *srv,
   // empty
   if (srv->head == srv->tail) return -1;
   *ctx = srv->active_context[srv->head];
+  srv->active_context[srv->head] = NULL;
   srv->head = (srv->head + 1) % MAX_CONTEXTS;
 
   return 0;

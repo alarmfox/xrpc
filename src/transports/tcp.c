@@ -19,6 +19,7 @@ const struct xrpc_transport_ops xrpc_transport_tcp_ops;
 const struct xrpc_connection_ops xrpc_connection_tcp_ops;
 
 struct xrpc_transport_data {
+  int current_id;
   int fd;
   int accept_timeout_ms;
   bool nonblocking;
@@ -188,6 +189,7 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
   data->fd = fd;
   data->accept_timeout_ms = args->accept_timeout_ms;
   data->nonblocking = args->nonblocking;
+  data->current_id = 0;
   t->ops = &xrpc_transport_tcp_ops;
   t->data = data;
 
@@ -241,8 +243,14 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
 
   cdata->fd = client_fd;
+
+  // setup connection
   conn->data = (void *)cdata;
   conn->ops = &xrpc_connection_tcp_ops;
+  conn->id = data->current_id++;
+  conn->is_closed = false;
+  conn->is_closing = false;
+  conn->ref_count = 0;
 
   *c = conn;
   return XRPC_SUCCESS;
@@ -288,19 +296,20 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
                                             struct xrpc_connection *conn) {
   (void)t;
   if (!conn) return;
+  conn->is_closed = true;
 
   struct xrpc_connection_data *cdata =
       (struct xrpc_connection_data *)conn->data;
 
-  if (cdata->fd > 0) {
+  if (cdata && cdata->fd > 0) {
     close(cdata->fd);
     cdata->fd = 1;
   }
 
-  free(conn);
-  conn = NULL;
-  free(cdata);
-  cdata = NULL;
+  if (conn->ref_count <= 0) {
+    if (cdata) free(cdata);
+    free(conn);
+  }
 }
 
 static void xrpc_transport_server_tcp_free(struct xrpc_transport *t) {
