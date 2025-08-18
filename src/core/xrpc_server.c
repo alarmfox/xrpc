@@ -35,7 +35,7 @@ struct xrpc_server {
   struct xrpc_transport *transport;
   struct xrpc_io_system *io;
 
-  // A small queue to store contexts. TODO: ringbuffer
+  // A small queue to store contexts. TODO: ringbuffer properly
   struct xrpc_request_context *active_context[MAX_CONTEXTS];
   size_t head;
   size_t tail;
@@ -52,6 +52,7 @@ static int enqueue_context(struct xrpc_server *srv,
                            struct xrpc_request_context *ctx);
 static int dequeue_context(struct xrpc_server *srv,
                            struct xrpc_request_context **ctx);
+static ssize_t count_context(struct xrpc_server *srv);
 
 // This map stores different transports. For now this is only for supported
 // transport of this library. In future, a "register" method could be provided.
@@ -151,11 +152,14 @@ int xrpc_server_run(struct xrpc_server *srv) {
 
     srv->io->ops->poll(srv->io);
 
-    // TODO: snapshot so we can push things to the safely.
-    // consume contexts
-    while (dequeue_context(srv, &ctx) == 0) {
-      // we are ready to read another request
+    // snapshot the context so that we can consume at most `n` contexts. This
+    // helps before we can append new contexts in the loop and do not create an
+    // infinite loop.
+    ssize_t n = count_context(srv);
 
+    while ((n--) > 0 && dequeue_context(srv, &ctx) == 0) {
+      // completed body reading, we are ready to read another request
+      // while processing. This could be more helpful if we add a worker thread.
       if (ctx->state == XRPC_REQ_STATE_PROCESS) {
         process(ctx);
         ctx->state = XRPC_REQ_STATE_WRITE;
@@ -386,6 +390,7 @@ static int enqueue_context(struct xrpc_server *srv,
   return 0;
 }
 
+// Returns 0 if ok or -1 if empty
 static int dequeue_context(struct xrpc_server *srv,
                            struct xrpc_request_context **ctx) {
 
@@ -396,4 +401,12 @@ static int dequeue_context(struct xrpc_server *srv,
 
   return 0;
 }
-static size_t count_context(struct xrpc_server *srv) {}
+static ssize_t count_context(struct xrpc_server *srv) {
+  ssize_t size = 0;
+  if (srv->tail >= srv->head)
+    size = srv->tail - srv->head;
+  else
+    size = MAX_CONTEXTS - srv->head + srv->tail;
+
+  return size;
+}
