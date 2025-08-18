@@ -8,13 +8,8 @@
 #include "xrpc/xrpc.h"
 
 #define MAX_HANDLERS 64
+#define MAX_CONTEXTS 64
 #define MAX_REQUEST_SIZE (1024 * 1024 * 4) // 4M
-
-struct xrpc_server {
-  xrpc_handler_fn handlers[MAX_HANDLERS];
-  struct xrpc_transport *transport;
-  struct xrpc_io_system *io;
-};
 
 struct xrpc_request_context {
   enum state {
@@ -35,6 +30,17 @@ struct xrpc_request_context {
   uint8_t *response_data;
 };
 
+struct xrpc_server {
+  xrpc_handler_fn handlers[MAX_HANDLERS];
+  struct xrpc_transport *transport;
+  struct xrpc_io_system *io;
+
+  // A small queue to store contexts. TODO: ringbuffer
+  struct xrpc_request_context *active_context[MAX_CONTEXTS];
+  size_t head;
+  size_t tail;
+};
+
 // Utils functions to manage xrpc_request_context lifecycle
 static struct xrpc_request_context *
 create_request_context(struct xrpc_server *srv, struct xrpc_connection *conn);
@@ -42,6 +48,10 @@ static void free_context(struct xrpc_request_context *ctx);
 static void advance_request_state_machine(struct xrpc_request_context *ctx);
 static void process(struct xrpc_request_context *ctx);
 static void io_request_completed(struct xrpc_io_operation *op, int status);
+static int enqueue_context(struct xrpc_server *srv,
+                           struct xrpc_request_context *ctx);
+static int dequeue_context(struct xrpc_server *srv,
+                           struct xrpc_request_context **ctx);
 
 // This map stores different transports. For now this is only for supported
 // transport of this library. In future, a "register" method could be provided.
@@ -99,6 +109,7 @@ int xrpc_server_create(struct xrpc_server **srv,
 
   s->transport = t;
   s->io = ios;
+  s->head = s->tail = 0;
   *srv = s;
   return ret;
 }
@@ -128,17 +139,35 @@ int xrpc_server_run(struct xrpc_server *srv) {
 
   while (1) {
     if (ret = srv->transport->ops->accept(srv->transport, &conn),
-        ret != XRPC_SUCCESS)
-      continue;
+        ret == XRPC_SUCCESS) {
 
-    XRPC_DEBUG_PRINT("received connection");
-    ctx = create_request_context(srv, conn);
+      XRPC_DEBUG_PRINT("received connection");
+      ctx = create_request_context(srv, conn);
 
-    if (!ctx) goto release_conn;
+      if (!ctx) goto release_conn;
 
-    advance_request_state_machine(ctx);
+      enqueue_context(srv, ctx);
+    }
 
     srv->io->ops->poll(srv->io);
+
+    // TODO: snapshot so we can push things to the safely.
+    // consume contexts
+    while (dequeue_context(srv, &ctx) == 0) {
+      // we are ready to read another request
+
+      if (ctx->state == XRPC_REQ_STATE_PROCESS) {
+        process(ctx);
+        ctx->state = XRPC_REQ_STATE_WRITE;
+
+        // we are ready to read another request
+        struct xrpc_request_context *c = create_request_context(srv, conn);
+        enqueue_context(srv, c);
+      }
+
+      advance_request_state_machine(ctx);
+    }
+    continue;
 
   release_conn:
     srv->transport->ops->close(srv->transport, conn);
@@ -170,6 +199,7 @@ static struct xrpc_request_context *
 create_request_context(struct xrpc_server *srv, struct xrpc_connection *conn) {
   struct xrpc_request_context *ctx =
       malloc(sizeof(struct xrpc_request_context));
+
   if (!ctx) return NULL;
 
   ctx->request_header = malloc(sizeof(struct xrpc_request_header));
@@ -215,11 +245,15 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
     if (!ctx->request_data) {
       ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
 
+      op->conn = ctx->conn;
+      op->ctx = ctx;
       op->type = XRPC_IO_WRITE;
       op->len = sizeof(struct xrpc_response_header);
       op->buf = ctx->response_header;
       op->on_complete = io_request_completed;
     } else {
+      op->conn = ctx->conn;
+      op->ctx = ctx;
       op->type = XRPC_IO_READ;
       op->len = ctx->request_header->sz;
       op->buf = ctx->request_data;
@@ -229,7 +263,6 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
     break;
     // process the request and schedule the write operation for the response
   case XRPC_REQ_STATE_PROCESS:
-    process(ctx);
     break;
 
   case XRPC_REQ_STATE_WRITE: {
@@ -243,7 +276,9 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
     if (!write_buffer) {
       ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
       ctx->response_header->sz = 0;
+      op->ctx = ctx;
       op->type = XRPC_IO_WRITE;
+      op->conn = ctx->conn;
       op->len = sizeof(struct xrpc_response_header);
       op->buf = ctx->response_header;
       op->on_complete = io_request_completed;
@@ -259,7 +294,9 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
       }
       // Schedule single write operation
       op->type = XRPC_IO_WRITE;
+      op->ctx = ctx;
       op->buf = write_buffer;
+      op->conn = ctx->conn;
       op->len = total_len;
       op->on_complete = io_request_completed;
     }
@@ -311,6 +348,7 @@ static void io_request_completed(struct xrpc_io_operation *op, int status) {
     ctx->state = XRPC_REQ_STATE_COMPLETED;
     break;
   case XRPC_REQ_STATE_COMPLETED:
+    if (op->buf) free(op->buf);
     break;
   }
 
@@ -319,7 +357,8 @@ static void io_request_completed(struct xrpc_io_operation *op, int status) {
     op = NULL;
   }
 
-  advance_request_state_machine(ctx);
+  // the main loop will advance the schedule
+  enqueue_context(ctx->srv, ctx);
 }
 
 static void process(struct xrpc_request_context *ctx) {
@@ -333,3 +372,28 @@ static void process(struct xrpc_request_context *ctx) {
     ctx->response_data = res.data;
   }
 }
+
+// Returns 0 if ok or -1 if full
+static int enqueue_context(struct xrpc_server *srv,
+                           struct xrpc_request_context *ctx) {
+
+  size_t pos = (1 + srv->tail) % MAX_CONTEXTS;
+  if (pos == srv->head) return -1;
+
+  srv->active_context[srv->tail] = ctx;
+  srv->tail = pos;
+
+  return 0;
+}
+
+static int dequeue_context(struct xrpc_server *srv,
+                           struct xrpc_request_context **ctx) {
+
+  // empty
+  if (srv->head == srv->tail) return -1;
+  *ctx = srv->active_context[srv->head];
+  srv->head = (srv->head + 1) % MAX_CONTEXTS;
+
+  return 0;
+}
+static size_t count_context(struct xrpc_server *srv) {}

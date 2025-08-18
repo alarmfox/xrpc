@@ -198,16 +198,20 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
   socklen_t client_len = sizeof(struct sockaddr_in);
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
   struct xrpc_connection *conn = NULL;
-  struct xrpc_connection_data *cdata =
-      malloc(sizeof(struct xrpc_connection_data));
+  struct xrpc_connection_data *cdata = NULL;
 
   client_fd = accept(data->fd, (struct sockaddr *)&client, &client_len);
-  if (client_fd < 0)
+
+  if (client_fd < 0 && (errno == EWOULDBLOCK || errno == EAGAIN))
+    return XRPC_TRANSPORT_WOULD_BLOCK;
+  else if (client_fd < 0)
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("accept", XRPC_TRANSPORT_ERR_ACCEPT);
 
+  cdata = malloc(sizeof(struct xrpc_connection_data));
   conn = malloc(sizeof(struct xrpc_connection));
 
-  if (!conn) XRPC_PRINT_SYSCALL_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
+  if (!conn || cdata)
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
 
   cdata->fd = client_fd;
   conn->data = (void *)cdata;
