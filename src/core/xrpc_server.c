@@ -223,7 +223,7 @@ static int create_request_context(struct xrpc_server *srv,
   struct xrpc_request_context *_ctx =
       malloc(sizeof(struct xrpc_request_context));
 
-  if (!ctx) return XRPC_API_ERR_ALLOC;
+  if (!_ctx) return XRPC_API_ERR_ALLOC;
 
   _ctx->last_error = XRPC_SUCCESS;
   _ctx->request_header = malloc(sizeof(struct xrpc_request_header));
