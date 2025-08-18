@@ -3,13 +3,8 @@ AR = ar
 
 ARFLAGS = rcs
 
-# TLS-only flags
-# TODO: configure this dinamically
-MBEDTLS_INC = -Iexternal/mbedtls/include
-MBEDTLS_LIBS = lib/libmbedtls.a lib/libmbedx509.a lib/libmbedcrypto.a
-
 CFLAGS = -std=c99 -Wall -Wextra -fPIC
-CFLAGS += -Iinclude/ $(MBEDTLS_INC)
+CFLAGS += -Iinclude/ 
 
 BUILD_DIR = build
 
@@ -35,7 +30,7 @@ libxrpc.a: $(ALL_OBJS)
 
 ## examples: builds examples
 examples: libxrpc.a
-	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc $(MBEDTLS_LIBS)
+	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc
 
 clean:
 	rm -f $(ALL_OBJS) libxrpc.a examples/*/server examples/*/client
