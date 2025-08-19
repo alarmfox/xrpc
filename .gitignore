@@ -1,5 +1,4 @@
-*.o
-
+*
 # Include these directories and exclude everything else.
 /*
 !/.clang-format
@@ -12,3 +11,7 @@
 !/include
 !/src
 !/test
+
+# Ignore all build files from the test directory
+!/test/**/*.c
+!/test/**/*.h
