@@ -86,6 +86,14 @@ exit:
 
 ```
 
+
+## Testing
+Execute all the available tests in `test/` using:
+
+```sh
+make test
+```
+
 ## Development
 To get a working LSP, you can use [Bear](https://github.com/rizsotto/Bear) to generate a `compile_commands.json`.
 
