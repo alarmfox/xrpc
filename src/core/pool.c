@@ -19,7 +19,7 @@
  * F: free bit
  * R: reserved bit
  *
- *  RRRRRRUF
+ *  RRRRRRFU
  * +--------+----------------------------------------+
  * |Meta    |  Element                               |
  * +--------+----------------------------------------+
@@ -62,8 +62,8 @@ int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
   for (size_t i = 0; i < max_len; ++i) {
     curr = 1 + tmp + elem_size * i;
     header = *(curr - 1);
-    header = *(curr - 1);
-    header |= *(curr - 1) = header;
+    header = XRPC_POOL_ELEM_FREE_MASK;
+    *(curr - 1) = header;
   }
 
   *p = _p;
@@ -97,7 +97,7 @@ int xrpc_pool_get(struct xrpc_pool *p, void **elem) {
     header = *(curr - 1);
 
     // if the slot is free mark it as used
-    if (header & (1 << XRPC_POOL_ELEM_FREE_MASK)) {
+    if (header & XRPC_POOL_ELEM_FREE_MASK) {
       /* explicitly set free bit and clear used bit */
       header = (header & (uint8_t)~XRPC_POOL_ELEM_FREE_MASK) |
                XRPC_POOL_ELEM_USED_MASK;
@@ -126,7 +126,7 @@ void xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
     curr = (1 + tmp + p->elem_size * i);
     header = *(curr - 1);
 
-    if (curr == elem && (header & (1 << XRPC_POOL_ELEM_USED_MASK))) {
+    if (curr == elem && (header & XRPC_POOL_ELEM_USED_MASK)) {
       // if the slot is used mark it as free
       header = (header & (uint8_t)~XRPC_POOL_ELEM_USED_MASK) |
                XRPC_POOL_ELEM_FREE_MASK;
@@ -142,5 +142,7 @@ void xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
  * @param[out] p      The pool instance to create.
  */
 void xrpc_pool_free(struct xrpc_pool *p) {
-  if (p) free(p->items);
+  if (!p) return;
+
+  free(p->items);
 }
