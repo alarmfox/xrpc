@@ -12,12 +12,22 @@ else
 CFLAGS += -O2
 endif
 
+# Testing flags and src
+TEST_CFLAGS = $(CFLAGS) -Itest/
+
+TEST_SRCS = $(wildcard test/test_*.c)
 CORE_SRCS = $(wildcard src/core/*.c)
 TRANSPORT_SRCS = $(wildcard src/transports/*.c)
 IO_SYSTEM_SRCS = $(wildcard src/io/*.c)
 
 ALL_SRCS = $(CORE_SRCS) $(TRANSPORT_SRCS) $(IO_SYSTEM_SRCS)
 ALL_OBJS = $(ALL_SRCS:.c=.o)
+TEST_OBJS = $(TEST_SRCS:.c=.o)
+TEST_BINS = $(TEST_SRCS:.c=)
+
+
+## all: buils the library examples and test
+all: libxrpc.a examples
 
 ## libxrpc.a: builds the library
 libxrpc.a: $(ALL_OBJS)
@@ -30,10 +40,27 @@ libxrpc.a: $(ALL_OBJS)
 examples: libxrpc.a
 	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc
 
-clean:
-	rm -f $(ALL_OBJS) libxrpc.a examples/*/server examples/*/client
+## test: builds test
+test: $(TEST_BINS)
+	@for test in $(TEST_BINS); do \
+		./$${test} || exit 1; \
+	done
 
-.PHONY: examples clean help
+	@echo "Tests completed successfully"
+
+# builds the test
+test/%.o: test/%.c
+	$(CC) $(TEST_CFLAGS) -c -o $@ $<
+
+# Test binary compilation
+test/%: test/%.o libxrpc.a
+	$(CC) $(TEST_CFLAGS) $< -o $@ -L. -lxrpc
+
+## clean: remove all artifacts
+clean:
+	rm -f $(ALL_OBJS) libxrpc.a examples/*/server $(TEST_BINS)
+
+.PHONY: examples clean help test
 
 ## help: prints this help message
 help:
