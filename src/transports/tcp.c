@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -252,6 +253,10 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
   conn->is_closing = false;
   conn->ref_count = 0;
 
+  XRPC_DEBUG_PRINT("tcp connection accepted from %s:%d (id=%lu)",
+                   inet_ntoa(client.sin_addr), ntohs(client.sin_port),
+                   conn->id);
+
   *c = conn;
   return XRPC_SUCCESS;
 }
@@ -296,17 +301,15 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
                                             struct xrpc_connection *conn) {
   (void)t;
   if (!conn) return;
-  conn->is_closed = true;
 
   struct xrpc_connection_data *cdata =
       (struct xrpc_connection_data *)conn->data;
 
+  XRPC_DEBUG_PRINT("closing tcp connection (id=%lu)", conn->id);
+
   if (cdata && cdata->fd > 0) {
     close(cdata->fd);
-    cdata->fd = 1;
-  }
-
-  if (conn->ref_count <= 0) {
+    cdata->fd = -1;
     if (cdata) free(cdata);
     free(conn);
   }
