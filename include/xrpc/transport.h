@@ -1,5 +1,5 @@
-#ifndef __TRANSPORT_H
-#define __TRANSPORT_H
+#ifndef XRPC_TRANSPORT_H
+#define XRPC_TRANSPORT_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -169,4 +169,4 @@ static inline void connection_unref(struct xrpc_transport *t,
   }
 }
 
-#endif // !__TRANSPORT_H
+#endif // !XRPC_TRANSPORT_H

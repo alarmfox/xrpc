@@ -1,5 +1,5 @@
-#ifndef __XRPC_H
-#define __XRPC_H
+#ifndef XRPC_H
+#define XRPC_H
 
 #include <netinet/in.h>
 #include <stdbool.h>
@@ -351,4 +351,4 @@ void xrpc_client_free(struct xrpc_client *cli);
         .addr = {.sun_family = AF_UNIX, .sun_path = path_},                    \
     },                                                                         \
   }
-#endif // __XRPC_H
+#endif // XRPC_H

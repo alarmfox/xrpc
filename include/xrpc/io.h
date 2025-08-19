@@ -1,5 +1,5 @@
-#ifndef __IO_H
-#define __IO_H
+#ifndef XRPC_IO_H
+#define XRPC_IO_H
 
 #include <stddef.h>
 
@@ -73,4 +73,4 @@ struct xrpc_io_system {
 };
 
 extern const struct xrpc_io_system_ops xrpc_blocking_ops;
-#endif // !__IO_H
+#endif // ! XRPC_IO_H

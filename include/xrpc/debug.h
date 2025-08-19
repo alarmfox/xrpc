@@ -1,5 +1,5 @@
-#ifndef __XRPC_DEBUG_H
-#define __XRPC_DEBUG_H
+#ifndef XRPC_DEBUG_H
+#define XRPC_DEBUG_H
 #include <stdio.h>
 
 #ifdef DEBUG
@@ -46,4 +46,4 @@
   } while (0)
 #endif
 
-#endif // __XRPC_DEBUG_H
+#endif // XRPC_DEBUG_H
