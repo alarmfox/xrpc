@@ -12,6 +12,7 @@
 
 #include "xrpc/debug.h"
 #include "xrpc/error.h"
+#include "xrpc/pool.h"
 #include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
@@ -20,6 +21,7 @@ const struct xrpc_transport_ops xrpc_transport_tcp_ops;
 const struct xrpc_connection_ops xrpc_connection_tcp_ops;
 
 struct xrpc_transport_data {
+  struct xrpc_pool *pool;
   int current_id;
   int fd;
   int accept_timeout_ms;
@@ -168,6 +170,9 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
 
   struct xrpc_transport *t = malloc(sizeof(struct xrpc_transport));
   struct xrpc_transport_data *data = malloc(sizeof(struct xrpc_transport_data));
+  struct xrpc_pool *pool = NULL;
+  const size_t conn_size =
+      sizeof(struct xrpc_connection) + sizeof(struct xrpc_connection_data);
 
   if (!t) XRPC_PRINT_ERR_AND_RETURN("malloc error", XRPC_API_ERR_ALLOC);
   if (!data) XRPC_PRINT_ERR_AND_RETURN("malloc error", XRPC_API_ERR_ALLOC);
@@ -187,10 +192,15 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
   if (ret = listen(fd, args->listen_backlog), ret < 0)
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("listen", XRPC_TRANSPORT_ERR_LISTEN);
 
+  if (ret = xrpc_pool_init(&pool, 100, conn_size), ret != XRPC_SUCCESS)
+    XRPC_PRINT_ERR_AND_RETURN("connection poll init error", ret);
+
   data->fd = fd;
   data->accept_timeout_ms = args->accept_timeout_ms;
   data->nonblocking = args->nonblocking;
   data->current_id = 0;
+  data->pool = pool;
+
   t->ops = &xrpc_transport_tcp_ops;
   t->data = data;
 
@@ -237,11 +247,15 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
       XRPC_PRINT_SYSCALL_ERR_AND_RETURN("accept", XRPC_TRANSPORT_ERR_ACCEPT);
   }
 
-  cdata = malloc(sizeof(struct xrpc_connection_data));
-  conn = malloc(sizeof(struct xrpc_connection));
+  // get a connection from the pool
+  xrpc_pool_get(data->pool, (void **)&conn);
+  if (!conn) return XRPC_API_ERR_ALLOC;
 
-  if (!conn || !cdata)
-    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
+  // the pool gets a block to a contigous memory region. First part of the
+  // memory is for connection and than to the xrpc_connetion
+  conn->data = (uint8_t *)conn + sizeof(struct xrpc_connection);
+
+  cdata = conn->data;
 
   cdata->fd = client_fd;
 
@@ -258,6 +272,22 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
                    conn->id);
 
   *c = conn;
+  return XRPC_SUCCESS;
+}
+
+static int xrpc_transport_server_tcp_send(struct xrpc_connection *conn,
+                                          const void *b, size_t len,
+                                          size_t *bytes_written) {
+  ssize_t n;
+  struct xrpc_connection_data *cdata =
+      (struct xrpc_connection_data *)conn->data;
+
+  n = write(cdata->fd, b, len);
+  if (n <= 0)
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
+
+  *bytes_written = n;
+
   return XRPC_SUCCESS;
 }
 
@@ -281,27 +311,12 @@ static int xrpc_transport_server_tcp_recv(struct xrpc_connection *conn, void *b,
   return XRPC_SUCCESS;
 }
 
-static int xrpc_transport_server_tcp_send(struct xrpc_connection *conn,
-                                          const void *b, size_t len,
-                                          size_t *bytes_written) {
-  ssize_t n;
-  struct xrpc_connection_data *cdata =
-      (struct xrpc_connection_data *)conn->data;
-
-  n = write(cdata->fd, b, len);
-  if (n <= 0)
-    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
-
-  *bytes_written = n;
-
-  return XRPC_SUCCESS;
-}
-
 static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
                                             struct xrpc_connection *conn) {
   (void)t;
   if (!conn) return;
 
+  struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
   struct xrpc_connection_data *cdata =
       (struct xrpc_connection_data *)conn->data;
 
@@ -310,8 +325,11 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
   if (cdata && cdata->fd > 0) {
     close(cdata->fd);
     cdata->fd = -1;
-    if (cdata) free(cdata);
-    free(conn);
+    // zero out the memory
+    memset(conn, 0,
+           sizeof(struct xrpc_connection) +
+               sizeof(struct xrpc_connection_data));
+    xrpc_pool_put(data->pool, conn);
   }
 }
 
@@ -319,6 +337,8 @@ static void xrpc_transport_server_tcp_free(struct xrpc_transport *t) {
   if (!t) return;
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
   if (data->fd > 0) close(data->fd);
+  if (data->pool) xrpc_pool_free(data->pool);
+  data->pool = NULL;
   free(data);
 }
 
