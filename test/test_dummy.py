@@ -18,9 +18,9 @@ def recvall(sock, n):
     return data
 
 
-def do_dummy(s: socket.socket) -> None:
+def do_dummy(s: socket.socket, id: int) -> None:
     a = random.randint(0, 10)
-    header = struct.pack("=IIQ", OP_DUMMY, 8, 1)
+    header = struct.pack("=IIQ", OP_DUMMY, 8, id)
     data = struct.pack("Q", a)
 
     s.sendall(header + data)
@@ -31,11 +31,11 @@ def do_dummy(s: socket.socket) -> None:
     assert res[0] == OP_DUMMY, (
         "request operation does not match. expected {OP_DUMMY}; got {res[0]}"
     )
-    assert res[1] == 8, "response size must be 8; got {res[1]}"
-    assert res[2] == 1, "request id expected 1; got {res[2]}"
+    assert res[1] == 8, f"response size must be 8; got {res[1]}"
+    assert res[2] == id, f"request id expected {id}; got {res[2]}"
     assert res[3] == 0x1, f"response status expected 0x1; got {res[3]}"
     assert res[4] == a, f"expected {a}; got {res[4]}"
 
 
 with socket.create_connection((SERVER_ADDRESS, SERVER_PORT_TCP)) as s:
-    do_dummy(s)
+    do_dummy(s, 1)
