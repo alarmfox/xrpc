@@ -12,7 +12,7 @@ else
 CFLAGS += -O2
 endif
 
-# Testing flags and src
+# Testing flags
 TEST_CFLAGS = $(CFLAGS) -Itest/
 
 TEST_SRCS = $(wildcard test/test_*.c)
@@ -26,7 +26,7 @@ TEST_OBJS = $(TEST_SRCS:.c=.o)
 TEST_BINS = $(TEST_SRCS:.c=)
 
 
-## all: buils the library examples and test
+## all: buils the library and examples
 all: libxrpc.a examples
 
 ## libxrpc.a: builds the library
