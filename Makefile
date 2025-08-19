@@ -40,7 +40,7 @@ libxrpc.a: $(ALL_OBJS)
 examples: libxrpc.a
 	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc
 
-## test: builds test
+## test: builds and runs test
 test: $(TEST_BINS)
 	@for test in $(TEST_BINS); do \
 		./$${test} || exit 1; \
