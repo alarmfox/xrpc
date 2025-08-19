@@ -6,8 +6,12 @@
 #include "xrpc/error.h"
 #include "xrpc/pool.h"
 
-#define XRPC_POOL_ELEM_USED 0x0
-#define XRPC_POOL_ELEM_FREE 0x1
+/* define bit positions and proper masks */
+#define XRPC_POOL_ELEM_USED_BIT 0
+#define XRPC_POOL_ELEM_FREE_BIT 1
+
+#define XRPC_POOL_ELEM_USED_MASK (1u << XRPC_POOL_ELEM_USED_BIT)
+#define XRPC_POOL_ELEM_FREE_MASK (1u << XRPC_POOL_ELEM_FREE_BIT)
 
 /*
  * Elements foramtting:
@@ -58,8 +62,8 @@ int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
   for (size_t i = 0; i < max_len; ++i) {
     curr = 1 + tmp + elem_size * i;
     header = *(curr - 1);
-    header ^= header | (1 << XRPC_POOL_ELEM_FREE);
-    *(curr - 1) = header;
+    header = *(curr - 1);
+    header |= *(curr - 1) = header;
   }
 
   *p = _p;
@@ -93,8 +97,10 @@ int xrpc_pool_get(struct xrpc_pool *p, void **elem) {
     header = *(curr - 1);
 
     // if the slot is free mark it as used
-    if (header & (1 << XRPC_POOL_ELEM_FREE)) {
-      header ^= header | (1 << XRPC_POOL_ELEM_USED);
+    if (header & (1 << XRPC_POOL_ELEM_FREE_MASK)) {
+      /* explicitly set free bit and clear used bit */
+      header = (header & (uint8_t)~XRPC_POOL_ELEM_FREE_MASK) |
+               XRPC_POOL_ELEM_USED_MASK;
       *(curr - 1) = header;
 
       ret = curr;
@@ -120,9 +126,10 @@ void xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
     curr = (1 + tmp + p->elem_size * i);
     header = *(curr - 1);
 
-    if (curr == elem && (header & (1 << XRPC_POOL_ELEM_USED))) {
+    if (curr == elem && (header & (1 << XRPC_POOL_ELEM_USED_MASK))) {
       // if the slot is used mark it as free
-      header ^= header | (1 << XRPC_POOL_ELEM_FREE);
+      header = (header & (uint8_t)~XRPC_POOL_ELEM_USED_MASK) |
+               XRPC_POOL_ELEM_FREE_MASK;
       *(curr - 1) = header;
       break;
     }
