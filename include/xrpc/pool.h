@@ -28,11 +28,13 @@ struct xrpc_pool {
  * @brief Create a new pool.
  *
  * @param[out] p      The pool instance to create.
- * @parm[in] max_len  Max length of the pool (specified as number of elements).
- * @param[in] elem_size Size of one element (specified as number of bytes).
+ * @parm[in] max_len  Max length of the pool (number o elements).
+ * @param[in] elem_size Size of one element (number of bytes).
  *
- * @return XRPC_SUCCESS on succes and XRPC_INTERNAL_ERR_ALLOC if there are
- * errors during allocations.
+ * @return XRPC_SUCCESS on succes
+ * @return XRPC_INTERNAL_ERR_ALLOC if there are errors during allocations.
+ * @return XRPC_INTERNAL_ERR_POOL_INVALID_ARG if max len is zero or elem_size is
+ * zero
  */
 int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
                    const size_t elem_size);
@@ -40,26 +42,23 @@ int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
 /*
  * @brief Retrieves the first available element.
  *
- * This function reuses existing elements previously created by the pool. If
- * none is free, it attempts to create a new instance with malloc.
+ * This is operation is performed in O(1) since it is just peaking the free_list
+ * with a stack policy.
  *
  * @param[in] p     The pool instance.
  * @param[out] elem A pointer to the element retrieved
  *
- * @return XRPC_SUCCESS if no errors. XRPC_API_ERR_ALLOC if the resource cannot
- * be allocated or the pool exceeds the max_len.
+ * @return XRPC_SUCCESS if no errors.
+ * @return XRPC_INTERNAL_ERR_POOL_FULL if no available elements
  */
 int xrpc_pool_get(struct xrpc_pool *p, void **elem);
 
 /*
  * @brief Gives back the element to the pool.
  *
- * If there is space the element is stored to avoid free/malloc. Otherwise it's
- * free.
- *
  * @param[in] p     The pool instance.
  * @param[out] elem A pointer to the element to store.
- *
+
  * @return XRPC_SUCCESS on success
  * @return XRPC_INTERNAL_ERR_POOL_INVALID_ARG when elem is not part of the pool
  */
