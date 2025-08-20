@@ -3,12 +3,14 @@
 
 #include "test.h"
 
-// Test basic pool creation and destruction
+// Test basic pool creation and destructionG
 static int test_pool_init_free() {
   TEST_CASE("pool_init_free");
 
   struct xrpc_pool *pool = NULL;
-  int ret = xrpc_pool_init(&pool, 10, 64);
+  int ret;
+
+  ret = xrpc_pool_init(&pool, 10, 64);
 
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "Pool init should succeed");
   TEST_ASSERT_NOT_NULL(pool, "Pool should not be NULL after init");
@@ -24,8 +26,9 @@ static int test_pool_get_basic() {
 
   struct xrpc_pool *pool = NULL;
   void *elem1, *elem2;
+  int ret;
 
-  int ret = xrpc_pool_init(&pool, 5, 32);
+  ret = xrpc_pool_init(&pool, 5, 32);
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "Pool init should succeed");
 
   // Get first element
@@ -52,9 +55,10 @@ static int test_pool_exhaustion() {
 
   struct xrpc_pool *pool = NULL;
   void *elements[3];
+  int ret;
 
   // Create small pool
-  int ret = xrpc_pool_init(&pool, 2, 16);
+  ret = xrpc_pool_init(&pool, 2, 16);
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "Pool init should succeed");
 
   // Fill the pool
@@ -80,9 +84,10 @@ static int test_pool_reuse() {
 
   struct xrpc_pool *pool = NULL;
   void *elem1, *elem2, *elem3;
+  int ret;
 
   // Create pool with capacity 2
-  int ret = xrpc_pool_init(&pool, 2, 64);
+  ret = xrpc_pool_init(&pool, 2, 64);
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "Pool init should succeed");
 
   // Get two elements (should work)
@@ -115,8 +120,9 @@ static int test_pool_multiple_reuse() {
 
   struct xrpc_pool *pool = NULL;
   void *elem;
+  int ret;
 
-  int ret = xrpc_pool_init(&pool, 1, 32);
+  ret = xrpc_pool_init(&pool, 1, 32);
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "Pool init should succeed");
 
   // Multiple cycles of get/put
@@ -141,9 +147,10 @@ static int test_pool_invalid_params() {
 
   struct xrpc_pool *pool = NULL;
   void *elem;
+  int ret;
 
   // Test NULL pool pointer
-  int ret = xrpc_pool_init(NULL, 10, 32);
+  ret = xrpc_pool_init(NULL, 10, 32);
   TEST_ASSERT_EQ(XRPC_API_ERR_ALLOC, ret, "Init with NULL should fail");
 
   // Test zero capacity (edge case)
@@ -167,8 +174,9 @@ static int test_pool_invalid_put() {
   struct xrpc_pool *pool = NULL;
   void *elem, *fake_elem;
   char buffer[64];
+  int ret;
 
-  int ret = xrpc_pool_init(&pool, 2, 32);
+  ret = xrpc_pool_init(&pool, 2, 32);
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "Pool init should succeed");
 
   ret = xrpc_pool_get(pool, &elem);
