@@ -1,5 +1,5 @@
-#ifndef __ERROR_H
-#define __ERROR_H
+#ifndef XRPC_ERROR_H
+#define XRPC_ERROR_H
 
 /*
  * Every call returns 0 as success
@@ -72,4 +72,4 @@
  */
 #define XRPC_IO_SYSTEM_ERR_UNSUPPORTED_OPERATION -500
 
-#endif // !__ERROR_H
+#endif // !XRPC_ERROR_H
