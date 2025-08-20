@@ -17,11 +17,11 @@
  * - Atomic operation for thread safety
  */
 struct xrpc_pool {
-  void *items;               // pointer to the start of memory region
-  void **free_list;          // pointer to a stack which contains free pointers
-  _Atomic size_t free_count; // current available element in the free_list
   size_t elem_size; // size of a single element (as bytes including aligment)
   size_t capacity;  // max number of elmentsn (as elements count)
+  _Atomic size_t free_count; // current available element in the free_list
+  void *items;               // pointer to the start of memory region
+  void **free_list;          // pointer to a stack which contains free pointers
 } __attribute__((aligned(CACHE_LINE_SIZE)));
 
 /*
