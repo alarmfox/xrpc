@@ -72,4 +72,15 @@
  */
 #define XRPC_IO_SYSTEM_ERR_UNSUPPORTED_OPERATION -500
 
+/*
+ * Internal errors. These are from ringbuffer, workers and other components non
+ * exposed to the user
+ *
+ * From -600 to -699
+ */
+#define XRPC_INTERNAL_ERR_ALLOC -600
+#define XRPC_INTERNAL_ERR_RINGBUF_FULL -601
+#define XRPC_INTERNAL_ERR_RINGBUF_EMPTY -602
+#define XRPC_INTERNAL_ERR_RINGBUF_INVALID_ARG -603
+
 #endif // !XRPC_ERROR_H

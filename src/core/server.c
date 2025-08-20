@@ -4,11 +4,11 @@
 #include "xrpc/debug.h"
 #include "xrpc/error.h"
 #include "xrpc/io.h"
+#include "xrpc/ringbuf.h"
 #include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
 #define MAX_HANDLERS 64
-#define MAX_CONTEXTS 64
 #define MAX_REQUEST_SIZE (1024 * 1024 * 4) // 4M
 
 struct xrpc_request_context {
@@ -36,10 +36,7 @@ struct xrpc_server {
   struct xrpc_transport *transport;
   struct xrpc_io_system *io;
 
-  // A small queue to store contexts. TODO: ringbuffer properly
-  struct xrpc_request_context *active_context[MAX_CONTEXTS];
-  size_t head;
-  size_t tail;
+  struct xrpc_ringbuf *active_contexts;
 };
 
 // Utils functions to manage xrpc_request_context lifecycle
@@ -50,13 +47,6 @@ static void free_request_context(struct xrpc_request_context *ctx);
 static void advance_request_state_machine(struct xrpc_request_context *ctx);
 static void process(struct xrpc_request_context *ctx);
 static void io_request_completed(struct xrpc_io_operation *op);
-
-// Utils to manage xrpc_request_context queue
-static int enqueue_context(struct xrpc_server *srv,
-                           struct xrpc_request_context *ctx);
-static int dequeue_context(struct xrpc_server *srv,
-                           struct xrpc_request_context **ctx);
-static size_t count_context(struct xrpc_server *srv);
 
 // This map stores different transports. For now this is only for supported
 // transport of this library. In future, a "register" method could be provided.
@@ -77,6 +67,7 @@ int xrpc_server_create(struct xrpc_server **srv,
   struct xrpc_server *s = NULL;
   struct xrpc_transport *t = NULL;
   struct xrpc_io_system *ios = NULL;
+  struct xrpc_ringbuf *rb = NULL;
 
   if (!cfg)
     XRPC_PRINT_ERR_AND_RETURN("config is NULL", XRPC_API_ERR_INVALID_ARGS);
@@ -112,9 +103,13 @@ int xrpc_server_create(struct xrpc_server **srv,
     s->handlers[i] = NULL;
   }
 
+  // init the ringbuf
+  if (ret = xrpc_ringbuf_init(&rb, 100), ret != XRPC_SUCCESS)
+    XRPC_PRINT_ERR_AND_RETURN("cannot create request context queue", ret);
+
   s->transport = t;
   s->io = ios;
-  s->head = s->tail = 0;
+  s->active_contexts = rb;
   *srv = s;
   return ret;
 }
@@ -154,7 +149,7 @@ int xrpc_server_run(struct xrpc_server *srv) {
       }
 
       XRPC_DEBUG_PRINT("created context for connection %lu", conn->id);
-      enqueue_context(srv, ctx);
+      xrpc_ringbuf_push(srv->active_contexts, ctx);
     }
 
     srv->io->ops->poll(srv->io);
@@ -162,9 +157,10 @@ int xrpc_server_run(struct xrpc_server *srv) {
     // snapshot the context so that we can consume at most `n` contexts. This
     // helps because we can append new contexts in the loop an they will be
     // processed in the next iteration.
-    size_t n = count_context(srv);
+    size_t n = xrpc_ringbuf_count(srv->active_contexts);
 
-    while ((n--) > 0 && dequeue_context(srv, &ctx) == 0) {
+    while ((n--) > 0 && xrpc_ringbuf_pop(srv->active_contexts, (void *)&ctx) ==
+                            XRPC_SUCCESS) {
       // if the underlying connection is no longer valid. Put the request for
       // completion and free the resource completed body reading, we are ready
       if (!connection_is_valid(ctx->conn) ||
@@ -186,7 +182,8 @@ int xrpc_server_run(struct xrpc_server *srv) {
         {
           struct xrpc_request_context *_ctx = NULL;
           ret = create_request_context(srv, ctx->conn, &_ctx);
-          if (ret == XRPC_SUCCESS) enqueue_context(srv, _ctx);
+          if (ret == XRPC_SUCCESS)
+            xrpc_ringbuf_push(srv->active_contexts, _ctx);
         }
       }
       advance_request_state_machine(ctx);
@@ -373,7 +370,7 @@ static void io_request_completed(struct xrpc_io_operation *op) {
     op = NULL;
 
     /* Enqueue once for cleanup - server loop will free it */
-    enqueue_context(ctx->srv, ctx);
+    xrpc_ringbuf_push(ctx->srv->active_contexts, ctx);
     return;
   }
 
@@ -423,7 +420,7 @@ static void io_request_completed(struct xrpc_io_operation *op) {
   }
 
   // the main loop will advance the schedule
-  enqueue_context(ctx->srv, ctx);
+  xrpc_ringbuf_push(ctx->srv->active_contexts, ctx);
 }
 
 static void process(struct xrpc_request_context *ctx) {
@@ -436,40 +433,4 @@ static void process(struct xrpc_request_context *ctx) {
   } else {
     ctx->response_data = res.data;
   }
-}
-
-// Returns 0 if ok or -1 if full
-static int enqueue_context(struct xrpc_server *srv,
-                           struct xrpc_request_context *ctx) {
-
-  size_t pos = (1 + srv->tail) % MAX_CONTEXTS;
-  if (pos == srv->head) return -1;
-
-  srv->active_context[srv->tail] = ctx;
-  srv->tail = pos;
-
-  return 0;
-}
-
-// Returns 0 if ok or -1 if empty
-static int dequeue_context(struct xrpc_server *srv,
-                           struct xrpc_request_context **ctx) {
-
-  // empty
-  if (srv->head == srv->tail) return -1;
-  *ctx = srv->active_context[srv->head];
-  srv->active_context[srv->head] = NULL;
-  srv->head = (srv->head + 1) % MAX_CONTEXTS;
-
-  return 0;
-}
-
-static size_t count_context(struct xrpc_server *srv) {
-  size_t size = 0;
-  if (srv->tail >= srv->head)
-    size = srv->tail - srv->head;
-  else
-    size = MAX_CONTEXTS - srv->head + srv->tail;
-
-  return size;
 }
