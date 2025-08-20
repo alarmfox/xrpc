@@ -11,8 +11,10 @@
  * @param[out] rb       A new pointer to the ringbuf instance
  * @param[in] capacity  Capacity of the array
  *
- * @return XRPC_SUCCESS on success. XRPC_INTERNAL_ERR_ALLOC if cannot allocate
- * memory. XRPC_INTENAL_ERR_RINGBUF_INVALID_ARG if capacity is zero.
+ * @return XRPC_SUCCESS on success.
+ * @return XRPC_INTERNAL_ERR_ALLOC if cannot allocate
+ * memory
+ * @return XRPC_INTENAL_ERR_RINGBUF_INVALID_ARG if capacity is zero.
  */
 int xrpc_ringbuf_init(struct xrpc_ringbuf **rb, const size_t capacity) {
 
@@ -26,7 +28,8 @@ int xrpc_ringbuf_init(struct xrpc_ringbuf **rb, const size_t capacity) {
   _rb->head = 0;
   _rb->tail = 0;
 
-  _rb->items = malloc(sizeof(void *) * _rb->capacity);
+  // align the allocation. The size of void * should already be memory aligned
+  _rb->items = aligned_alloc(CACHE_LINE_SIZE, sizeof(void *) * _rb->capacity);
   if (!_rb->items) return XRPC_INTERNAL_ERR_ALLOC;
 
   memset(_rb->items, 0, sizeof(void *) * _rb->capacity);

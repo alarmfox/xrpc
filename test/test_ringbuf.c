@@ -149,7 +149,7 @@ static int test_ringbuf_empty() {
 }
 
 static int test_ringbuf_zero_cap() {
-  TEST_CASE("ringbuf_zerzerp_cap");
+  TEST_CASE("ringbuf_zero_cap");
 
   struct xrpc_ringbuf *rb = NULL;
   int ret;
