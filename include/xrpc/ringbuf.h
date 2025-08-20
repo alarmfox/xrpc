@@ -3,15 +3,19 @@
 
 #include <stddef.h>
 
+// Number of bytes of the cache line.
+// TODO: change this based on CPU architecture.
+#define CACHE_LINE_SIZE 64
+
 /*
  * Ring buffer data structure. It manages pointers of data with a FIFO policy.
  */
 struct xrpc_ringbuf {
-  void **items;
   size_t capacity;
   size_t head;
   size_t tail;
-};
+  void **items;
+} __attribute__((aligned(CACHE_LINE_SIZE)));
 
 /*
  * @brief Initializes a new instance of the ringbuf of capacity `capacity`.
