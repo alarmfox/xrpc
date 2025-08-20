@@ -25,7 +25,7 @@ static int test_pool_get_basic() {
   TEST_CASE("pool_get_basic");
 
   struct xrpc_pool *pool = NULL;
-  void *elem1, *elem2;
+  void *elem1 = NULL, *elem2 = NULL;
   int ret;
 
   ret = xrpc_pool_init(&pool, 5, 32);
@@ -64,13 +64,15 @@ static int test_pool_exhaustion() {
   // Fill the pool
   ret = xrpc_pool_get(pool, &elements[0]);
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "First get should succeed");
+  TEST_ASSERT_NOT_NULL(elements[0], "First element should not be NULL");
 
   ret = xrpc_pool_get(pool, &elements[1]);
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "Second get should succeed");
+  TEST_ASSERT_NOT_NULL(elements[1], "First element should not be NULL");
 
   // Pool should be exhausted
   ret = xrpc_pool_get(pool, &elements[2]);
-  TEST_ASSERT_EQ(XRPC_API_ERR_ALLOC, ret,
+  TEST_ASSERT_EQ(XRPC_INTERNAL_ERR_POOL_EMPTY, ret,
                  "Third get should fail (pool exhausted)");
 
   xrpc_pool_free(pool);
@@ -99,7 +101,8 @@ static int test_pool_reuse() {
 
   // Try to get third (should fail - pool full)
   ret = xrpc_pool_get(pool, &elem3);
-  TEST_ASSERT_EQ(XRPC_API_ERR_ALLOC, ret, "Third get should fail (pool full)");
+  TEST_ASSERT_EQ(XRPC_INTERNAL_ERR_POOL_EMPTY, ret,
+                 "Third get should fail (pool full)");
 
   // Put one back
   xrpc_pool_put(pool, elem1);
@@ -146,24 +149,19 @@ static int test_pool_invalid_params() {
   TEST_CASE("pool_invalid_params");
 
   struct xrpc_pool *pool = NULL;
-  void *elem;
   int ret;
 
   // Test NULL pool pointer
   ret = xrpc_pool_init(NULL, 10, 32);
-  TEST_ASSERT_EQ(XRPC_API_ERR_ALLOC, ret, "Init with NULL should fail");
+  TEST_ASSERT_EQ(XRPC_INTERNAL_ERR_POOL_INVALID_ARG, ret,
+                 "Init with NULL should fail");
 
   // Test zero capacity (edge case)
   ret = xrpc_pool_init(&pool, 0, 32);
-  // This might succeed or fail depending on implementation
-  if (ret == XRPC_SUCCESS) {
-    // If it succeeds, getting should immediately fail
-    ret = xrpc_pool_get(pool, &elem);
-    TEST_ASSERT_EQ(XRPC_API_ERR_ALLOC, ret,
-                   "Get from zero-capacity pool should fail");
-    xrpc_pool_free(pool);
-  }
+  TEST_ASSERT_EQ(XRPC_INTERNAL_ERR_POOL_INVALID_ARG, ret,
+                 "Init with zero capacity should fail");
 
+  xrpc_pool_free(pool);
   TEST_SUCCESS();
 }
 

@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -330,7 +331,8 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
     memset(conn, 0,
            sizeof(struct xrpc_connection) +
                sizeof(struct xrpc_connection_data));
-    xrpc_pool_put(data->pool, conn);
+    // should never fail
+    assert(xrpc_pool_put(data->pool, conn) == XRPC_SUCCESS);
   }
 }
 

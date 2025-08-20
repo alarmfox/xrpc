@@ -1,3 +1,4 @@
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -6,65 +7,55 @@
 #include "xrpc/error.h"
 #include "xrpc/pool.h"
 
-/* define bit positions and proper masks */
-#define XRPC_POOL_ELEM_USED_BIT 0
-#define XRPC_POOL_ELEM_FREE_BIT 1
-
-#define XRPC_POOL_ELEM_USED_MASK (1u << XRPC_POOL_ELEM_USED_BIT)
-#define XRPC_POOL_ELEM_FREE_MASK (1u << XRPC_POOL_ELEM_FREE_BIT)
-
-/*
- * Elements foramtting:
- * U: used bit
- * F: free bit
- * R: reserved bit
- *
- *  RRRRRRFU
- * +--------+----------------------------------------+
- * |Meta    |  Element                               |
- * +--------+----------------------------------------+
- */
-
 /*
  * @brief Create a new pool.
  *
  * @param[out] p      The pool instance to create.
- * @parm[in] max_len  Max length of the pool (specified as number of
- * elements).
- * @param[in] elem_size Size of one element (specified as number of bytes).
+ * @parm[in] max_len  Max length of the pool (number o elements).
+ * @param[in] elem_size Size of one element (number of bytes).
  *
- * @return XRPC_SUCCESS on succes and XRPC_API_ERR_ALLOC if there are errors
- * during allocations.
+ * @return XRPC_SUCCESS on succes
+ * @return XRPC_INTERNAL_ERR_ALLOC if there are errors during allocations.
+ * @return XRPC_INTERNAL_ERR_POOL_INVALID_ARG if max len is zero or elem_size is
+ * zero
  */
 int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
                    const size_t elem_size) {
 
-  struct xrpc_pool *_p = malloc(sizeof(struct xrpc_pool));
-  uint8_t *tmp = NULL, *curr = NULL, header = 0;
+  if (max_len == 0 || elem_size == 0 || !p)
+    return XRPC_INTERNAL_ERR_POOL_INVALID_ARG;
 
-  if (!p) return XRPC_API_ERR_ALLOC;
+  struct xrpc_pool *_p = NULL;
+  uint8_t *tmp = NULL;
 
-  // element size is increment by 1 byte to store the meta information.
-  // TODO: make this aligned.
-  _p->elem_size = elem_size;
+  _p = malloc(sizeof(struct xrpc_pool));
+  if (!_p) return XRPC_INTERNAL_ERR_ALLOC;
+
+  _p->elem_size = align_size(CACHE_LINE_SIZE, elem_size);
   _p->capacity = max_len;
-  // pre allocate
-  // TODO: evaluate lazy allocation
-  _p->items = malloc(elem_size * (max_len + 1));
+  _p->items = aligned_alloc(CACHE_LINE_SIZE, _p->elem_size * max_len);
 
-  if (!_p->items) return XRPC_API_ERR_ALLOC;
+  if (!_p->items) return XRPC_INTERNAL_ERR_ALLOC;
 
   // zero out the pool
-  memset(_p->items, 0, elem_size * (max_len + 1));
+  memset(_p->items, 0, _p->elem_size * max_len);
 
-  // init all items as free
-  tmp = (uint8_t *)_p->items + 1;
-  for (size_t i = 0; i < max_len; ++i) {
-    curr = 1 + tmp + elem_size * i;
-    header = *(curr - 1);
-    header = XRPC_POOL_ELEM_FREE_MASK;
-    *(curr - 1) = header;
+  // init the free list
+  _p->free_list = malloc(max_len * sizeof(void *));
+
+  if (!_p->free_list) return XRPC_INTERNAL_ERR_ALLOC;
+
+  memset(_p->free_list, 0, max_len * sizeof(void *));
+
+  // load all address in the free list since everything is free at the beginning
+  tmp = (uint8_t *)_p->items;
+  for (size_t i = 0; i < _p->capacity; ++i) {
+    _p->free_list[i] = (void *)tmp;
+    tmp += _p->elem_size;
   }
+
+  // initialize the free count as atomic variable
+  atomic_init(&_p->free_count, _p->capacity);
 
   *p = _p;
 
@@ -74,44 +65,28 @@ int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
 /*
  * @brief Retrieves the first available element.
  *
- * This function reuses existing elements previously created by the pool. If
- * none is free, it attempts to create a new instance with malloc.
- *
- * The main strategy is to add a byte meta information to the actual item and
- * strip it off to the user
+ * This is operation is performed in O(1) since it is just peaking the free_list
+ * with a stack policy.
  *
  * @param[in] p     The pool instance.
  * @param[out] elem A pointer to the element retrieved
  *
- * @return XRPC_SUCCESS if no errors. XRPC_API_ERR_ALLOC if the resource cannot
- * be allocated or the pool exceeds the max_len.
+ * @return XRPC_SUCCESS if no errors.
+ * @return XRPC_INTERNAL_ERR_POOL_FULL if no available elements
  */
 int xrpc_pool_get(struct xrpc_pool *p, void **elem) {
-  uint8_t header = 0, *tmp = p->items + 1, *curr = NULL;
-  void *ret = NULL;
+  size_t current = atomic_load(&p->free_count);
 
-  // attempt to find a free slot
-  for (size_t i = 0; i < p->capacity; ++i) {
-    // treat the void* array as bytes.
-    curr = (1 + tmp + p->elem_size * i);
-    header = *(curr - 1);
-
-    // if the slot is free mark it as used
-    if (header & XRPC_POOL_ELEM_FREE_MASK) {
-      /* explicitly set free bit and clear used bit */
-      header = (header & (uint8_t)~XRPC_POOL_ELEM_FREE_MASK) |
-               XRPC_POOL_ELEM_USED_MASK;
-      *(curr - 1) = header;
-
-      ret = curr;
-      break;
+  // try to decrement the counter atomically
+  while (current > 0) {
+    // if successfull return the target pointer
+    if (atomic_compare_exchange_weak(&p->free_count, &current, current - 1)) {
+      *elem = p->free_list[current - 1];
+      return XRPC_SUCCESS;
     }
   }
 
-  if (ret == NULL) return XRPC_API_ERR_ALLOC;
-
-  *elem = ret;
-  return XRPC_SUCCESS;
+  return XRPC_INTERNAL_ERR_POOL_EMPTY;
 }
 
 /*
@@ -119,21 +94,39 @@ int xrpc_pool_get(struct xrpc_pool *p, void **elem) {
  *
  * @param[in] p     The pool instance.
  * @param[out] elem A pointer to the element to store.
- */
-void xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
-  uint8_t header = 0, *tmp = p->items + 1, *curr = NULL;
-  for (size_t i = 0; i < p->capacity; ++i) {
-    curr = (1 + tmp + p->elem_size * i);
-    header = *(curr - 1);
 
-    if (curr == elem && (header & XRPC_POOL_ELEM_USED_MASK)) {
-      // if the slot is used mark it as free
-      header = (header & (uint8_t)~XRPC_POOL_ELEM_USED_MASK) |
-               XRPC_POOL_ELEM_FREE_MASK;
-      *(curr - 1) = header;
-      break;
+ * @return XRPC_SUCCESS on success
+ * @return XRPC_INTERNAL_ERR_POOL_INVALID_ARG when elem is not part of the pool
+ */
+int xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
+  // Check first if element belongs to the pool.
+  const uint8_t *start = (const uint8_t *)p->items;
+  const uint8_t *end = (const uint8_t *)p->items + p->capacity * p->elem_size;
+  const uint8_t *elem_ptr = (const uint8_t *)elem;
+  size_t current_free;
+
+  // the element does not belong to the pool
+  if (elem_ptr < start || elem_ptr >= end)
+    return XRPC_INTERNAL_ERR_POOL_INVALID_ARG;
+
+  // address must be one of element
+  if ((elem_ptr - start) % p->elem_size != 0)
+    return XRPC_INTERNAL_ERR_POOL_INVALID_ARG;
+
+  current_free = atomic_load(&p->free_count);
+
+  // try to increment the top of the stack to find a place where to store the
+  // address
+  while (current_free < p->capacity) {
+    if (atomic_compare_exchange_weak(&p->free_count, &current_free,
+                                     current_free + 1)) {
+
+      p->free_list[current_free] = (void *)elem;
+      return XRPC_SUCCESS;
     }
   }
+
+  return XRPC_INTERNAL_ERR_POOL_FULL;
 }
 
 /*
@@ -144,7 +137,14 @@ void xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
 void xrpc_pool_free(struct xrpc_pool *p) {
   if (!p) return;
 
-  if (p->items) free(p->items);
-  p->items = NULL;
+  if (p->items) {
+    free(p->items);
+    p->items = NULL;
+  }
+
+  if (p->free_list) {
+    free(p->free_list);
+    p->free_list = NULL;
+  }
   free(p);
 }
