@@ -120,7 +120,6 @@ int main(void) {
 
 exit:
   xrpc_server_free(srv);
-  free(srv);
   srv = NULL;
 
   return 0;

@@ -144,5 +144,7 @@ void xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
 void xrpc_pool_free(struct xrpc_pool *p) {
   if (!p) return;
 
-  free(p->items);
+  if (p->items) free(p->items);
+  p->items = NULL;
+  free(p);
 }

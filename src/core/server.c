@@ -56,7 +56,7 @@ static int enqueue_context(struct xrpc_server *srv,
                            struct xrpc_request_context *ctx);
 static int dequeue_context(struct xrpc_server *srv,
                            struct xrpc_request_context **ctx);
-static ssize_t count_context(struct xrpc_server *srv);
+static size_t count_context(struct xrpc_server *srv);
 
 // This map stores different transports. For now this is only for supported
 // transport of this library. In future, a "register" method could be provided.
@@ -162,7 +162,7 @@ int xrpc_server_run(struct xrpc_server *srv) {
     // snapshot the context so that we can consume at most `n` contexts. This
     // helps because we can append new contexts in the loop an they will be
     // processed in the next iteration.
-    ssize_t n = count_context(srv);
+    size_t n = count_context(srv);
 
     while ((n--) > 0 && dequeue_context(srv, &ctx) == 0) {
       // if the underlying connection is no longer valid. Put the request for
@@ -203,14 +203,14 @@ void xrpc_server_free(struct xrpc_server *srv) {
   }
   if (srv->transport && srv->transport->ops->free) {
     srv->transport->ops->free(srv->transport);
-    free(srv->transport);
     srv->transport = NULL;
   }
   if (srv->io && srv->io->ops->free) {
     srv->io->ops->free(srv->io);
-    free(srv->io);
     srv->io = NULL;
   }
+
+  free(srv);
 }
 
 static int create_request_context(struct xrpc_server *srv,
@@ -464,8 +464,8 @@ static int dequeue_context(struct xrpc_server *srv,
   return 0;
 }
 
-static ssize_t count_context(struct xrpc_server *srv) {
-  ssize_t size = 0;
+static size_t count_context(struct xrpc_server *srv) {
+  size_t size = 0;
   if (srv->tail >= srv->head)
     size = srv->tail - srv->head;
   else

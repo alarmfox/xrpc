@@ -337,10 +337,17 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
 static void xrpc_transport_server_tcp_free(struct xrpc_transport *t) {
   if (!t) return;
   struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
-  if (data->fd > 0) close(data->fd);
-  if (data->pool) xrpc_pool_free(data->pool);
-  data->pool = NULL;
-  free(data);
+  if (data) {
+    if (data->fd > 0) close(data->fd);
+    if (data->pool) {
+      xrpc_pool_free(data->pool);
+      data->pool = NULL;
+    }
+    free(data);
+    t->data = NULL;
+  }
+
+  free(t);
 }
 
 // TCP operations

@@ -14,7 +14,6 @@ static int test_pool_init_free() {
   TEST_ASSERT_NOT_NULL(pool, "Pool should not be NULL after init");
 
   xrpc_pool_free(pool);
-  free(pool);
 
   TEST_SUCCESS();
 }
@@ -43,7 +42,6 @@ static int test_pool_get_basic() {
   TEST_ASSERT(elem1 != elem2, "Pool elements should be different");
 
   xrpc_pool_free(pool);
-  free(pool);
 
   TEST_SUCCESS();
 }
@@ -72,7 +70,6 @@ static int test_pool_exhaustion() {
                  "Third get should fail (pool exhausted)");
 
   xrpc_pool_free(pool);
-  free(pool);
 
   TEST_SUCCESS();
 }
@@ -108,7 +105,6 @@ static int test_pool_reuse() {
   TEST_ASSERT_NOT_NULL(elem3, "Element after reuse should not be NULL");
 
   xrpc_pool_free(pool);
-  free(pool);
 
   TEST_SUCCESS();
 }
@@ -135,7 +131,6 @@ static int test_pool_multiple_reuse() {
   }
 
   xrpc_pool_free(pool);
-  free(pool);
 
   TEST_SUCCESS();
 }
@@ -160,7 +155,6 @@ static int test_pool_invalid_params() {
     TEST_ASSERT_EQ(XRPC_API_ERR_ALLOC, ret,
                    "Get from zero-capacity pool should fail");
     xrpc_pool_free(pool);
-    free(pool);
   }
 
   TEST_SUCCESS();
@@ -192,7 +186,6 @@ static int test_pool_invalid_put() {
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "Get after invalid put should still work");
 
   xrpc_pool_free(pool);
-  free(pool);
 
   TEST_SUCCESS();
 }
