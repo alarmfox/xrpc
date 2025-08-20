@@ -194,7 +194,8 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
   if (ret = listen(fd, args->listen_backlog), ret < 0)
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("listen", XRPC_TRANSPORT_ERR_LISTEN);
 
-  if (ret = xrpc_pool_init(&pool, 100, conn_size), ret != XRPC_SUCCESS)
+  if (ret = xrpc_pool_init(&pool, args->connection_pool_size, conn_size),
+      ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("connection poll init error", ret);
 
   data->fd = fd;
