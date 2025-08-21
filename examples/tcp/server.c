@@ -14,6 +14,13 @@
 
 static struct xrpc_server *srv = NULL;
 
+#define PRINT_STR_OPT_OR_DISABLED(opt, buf, v)                                 \
+  do {                                                                         \
+    strncpy(buf, "disabled", 8 + 1);                                           \
+    if (v > 0) sprintf(buf, "%d", v);                                          \
+    printf("  " opt " %s\n", buf);                                             \
+  } while (0)
+
 // Signal handler for clean shutdown
 static void signal_handler(int sig) {
   (void)sig;
@@ -93,6 +100,41 @@ static int dot_product_handler(const struct xrpc_request *req,
   return XRPC_SUCCESS;
 }
 
+static void print_config(const struct xrpc_server_config *cfg) {
+  const struct xrpc_transport_tcp_config *c = &cfg->tcfg->config.tcp;
+  char buf[64];
+
+  printf("\n=====================================\n");
+  printf("       XRPC TCP Server Configuration  \n");
+  printf("=====================================\n");
+
+  printf("  TCP_NODELAY           : %s\n", c->nodelay ? "enabled" : "disabled");
+  printf("  SO_REUSEADDR          : %s\n",
+         c->reuseaddr ? "enabled" : "disabled");
+  printf("  SO_REUSEPORT          : %s\n",
+         c->reuseport ? "enabled" : "disabled");
+  printf("  SO_KEEPALIVE          : %s\n",
+         c->keepalive ? "enabled" : "disabled");
+  printf("  O_NONBLOCK            : %s\n",
+         c->nonblocking ? "enabled" : "disabled");
+
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPIDLE          :", buf, c->keepalive_idle);
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPINTVL         :", buf,
+                            c->keepalive_interval);
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPCNT           :", buf,
+                            c->keepalive_probes);
+  PRINT_STR_OPT_OR_DISABLED("SO_SNDTIMEO           :", buf, c->send_timeout_ms);
+  PRINT_STR_OPT_OR_DISABLED("SO_RCVTIMEO           :", buf, c->recv_timeout_ms);
+  PRINT_STR_OPT_OR_DISABLED("SO_RCVBUF             :", buf,
+                            c->recv_buffer_size);
+  PRINT_STR_OPT_OR_DISABLED("SO_SNDBUF             :", buf,
+                            c->send_buffer_size);
+
+  printf("  Connections pool size : %d\n", c->connection_pool_size);
+
+  printf("=====================================\n\n");
+}
+
 int main(void) {
   struct xrpc_transport_config tcfg =
       XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
@@ -110,6 +152,7 @@ int main(void) {
     goto exit;
   }
 
+  printf("Creating XRPC Server on %s:%d\n", "127.0.0.1", 9000);
   if (xrpc_server_register(srv, OP_ECHO, echo_handler, XRPC_RF_OVERWRITE) !=
       XRPC_SUCCESS) {
     printf("cannot register dummy handler\n");
@@ -128,6 +171,16 @@ int main(void) {
     goto exit;
   }
 
+  printf("\nServer started successfully!\n");
+  print_config(&cfg);
+
+  printf("Available operations:\n");
+
+  printf("  0x%02X - Echo (mirror input data)\n", OP_ECHO);
+  printf("  0x%02X - Sum (sums 2 uint64_t)\n", OP_SUM);
+  printf("  0x%02X - Dot Product (performs dot product on equally size "
+         "uint64_t vectors)\n",
+         OP_DOT_PROD);
   xrpc_server_run(srv);
 
 exit:
