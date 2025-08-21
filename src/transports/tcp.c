@@ -12,6 +12,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include "benchmark.h"
 #include "xrpc/debug.h"
 #include "xrpc/error.h"
 #include "xrpc/pool.h"
@@ -277,6 +278,7 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
                    inet_ntoa(client.sin_addr), ntohs(client.sin_port),
                    conn->id);
 
+  XRPC_BENCH_CONN_ACCEPT(conn->id);
   *c = conn;
   return XRPC_SUCCESS;
 }
@@ -337,6 +339,7 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
                sizeof(struct xrpc_connection_data));
     // should never fail
     assert(xrpc_pool_put(data->pool, conn) == XRPC_SUCCESS);
+    XRPC_BENCH_CONN_CLOSE(conn->id);
   }
 }
 
