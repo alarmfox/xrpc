@@ -117,7 +117,7 @@ struct xrpc_connection {
   bool is_closed;  // connection is closed
   bool is_closing; // connection marked for closing. Cannot be assigned to
                    // contexts
-  uint64_t id;     // unique connection ID. Useful for connection pooling
+  uint64_t id;     // unique connection ID
   void *data;
 };
 
