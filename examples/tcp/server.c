@@ -105,41 +105,46 @@ static void print_config(const struct xrpc_server_config *cfg) {
   char buf[64];
 
   printf("\n========================================\n");
-  printf("      XRPC TCP Server Configuration     ");
+  printf(" XRPC TCP Server Benchmark Configuration ");
   printf("\n========================================\n");
 
-  printf("  TCP_NODELAY           : %s\n", c->nodelay ? "enabled" : "disabled");
-  printf("  SO_REUSEADDR          : %s\n",
+  printf("  TCP_NODELAY            : %s\n",
+         c->nodelay ? "enabled" : "disabled");
+  printf("  SO_REUSEADDR           : %s\n",
          c->reuseaddr ? "enabled" : "disabled");
-  printf("  SO_REUSEPORT          : %s\n",
+  printf("  SO_REUSEPORT           : %s\n",
          c->reuseport ? "enabled" : "disabled");
-  printf("  SO_KEEPALIVE          : %s\n",
+  printf("  SO_KEEPALIVE           : %s\n",
          c->keepalive ? "enabled" : "disabled");
-  printf("  O_NONBLOCK            : %s\n",
+  printf("  O_NONBLOCK             : %s\n",
          c->nonblocking ? "enabled" : "disabled");
 
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPIDLE          :", buf, c->keepalive_idle);
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPINTVL         :", buf,
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPIDLE           :", buf, c->keepalive_idle);
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPINTVL          :", buf,
                             c->keepalive_interval);
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPCNT           :", buf,
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPCNT            :", buf,
                             c->keepalive_probes);
-  PRINT_STR_OPT_OR_DISABLED("SO_SNDTIMEO           :", buf, c->send_timeout_ms);
-  PRINT_STR_OPT_OR_DISABLED("SO_RCVTIMEO           :", buf, c->recv_timeout_ms);
-  PRINT_STR_OPT_OR_DISABLED("SO_RCVBUF             :", buf,
+  PRINT_STR_OPT_OR_DISABLED("SO_SNDTIMEO            :", buf,
+                            c->send_timeout_ms);
+  PRINT_STR_OPT_OR_DISABLED("SO_RCVTIMEO            :", buf,
+                            c->recv_timeout_ms);
+  PRINT_STR_OPT_OR_DISABLED("SO_RCVBUF              :", buf,
                             c->recv_buffer_size);
-  PRINT_STR_OPT_OR_DISABLED("SO_SNDBUF             :", buf,
+  PRINT_STR_OPT_OR_DISABLED("SO_SNDBUF              :", buf,
                             c->send_buffer_size);
 
-  printf("  Connections pool size : %d\n", c->connection_pool_size);
-  printf("  Requests pool size    : %lu\n", cfg->max_concurrent_requests);
+  printf("  Connections pool size  : %d\n", c->connection_pool_size);
+  printf("  Requests pool size     : %lu\n", cfg->max_concurrent_requests);
+  printf("  Max concurrent I/O ops : %lu\n", cfg->max_concurrent_requests);
 
-  printf("========================================\n");
+  printf("========================================\n\n");
 }
 
 int main(void) {
   struct xrpc_transport_config tcfg =
       XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
-  struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING};
+  struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING,
+                                        .max_concurrent_operations = 128};
   struct xrpc_server_config cfg = {
       .tcfg = &tcfg, .iocfg = &iocfg, .max_concurrent_requests = 1024};
 
