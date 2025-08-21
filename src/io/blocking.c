@@ -1,15 +1,27 @@
 #include <stdlib.h>
 
+#include "xrpc/debug.h"
 #include "xrpc/error.h"
 #include "xrpc/io.h"
+#include "xrpc/pool.h"
 #include "xrpc/transport.h"
+#include "xrpc/xrpc.h"
 
 const struct xrpc_io_system_ops xrpc_blocking_ops;
 
 static int xrpc_io_blocking_init(struct xrpc_io_system **xio,
                                  const struct xrpc_io_system_config *args) {
-  (void)args;
+
+  int ret;
   struct xrpc_io_system *io = malloc(sizeof(struct xrpc_io_system));
+
+  if (!io) return XRPC_INTERNAL_ERR_ALLOC;
+
+  ret = xrpc_pool_init(&io->op_pool, args->max_concurrent_operations,
+                       sizeof(struct xrpc_io_operation));
+
+  if (ret != XRPC_SUCCESS)
+    XRPC_PRINT_ERR_AND_RETURN("cannot create operations pool", ret);
 
   io->ops = &xrpc_blocking_ops;
   io->data = NULL;
@@ -57,7 +69,12 @@ static int xrpc_io_blocking_poll(struct xrpc_io_system *xio) {
 }
 
 static void xrpc_io_blocking_free(struct xrpc_io_system *xio) {
-  if (xio) free(xio);
+  if (!xio) return;
+  if (xio->op_pool) {
+    xrpc_pool_free(xio->op_pool);
+    xio->op_pool = NULL;
+  }
+  free(xio);
 }
 
 const struct xrpc_io_system_ops xrpc_blocking_ops = {

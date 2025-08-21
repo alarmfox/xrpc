@@ -70,10 +70,6 @@ int xrpc_server_create(struct xrpc_server **srv,
 
   int ret = XRPC_SUCCESS;
   struct xrpc_server *s = NULL;
-  struct xrpc_transport *t = NULL;
-  struct xrpc_io_system *ios = NULL;
-  struct xrpc_ringbuf *rb = NULL;
-  struct xrpc_pool *ctx_pool = NULL;
   size_t context_size;
 
   if (!cfg)
@@ -91,7 +87,7 @@ int xrpc_server_create(struct xrpc_server **srv,
   // transport
   const struct xrpc_transport_ops *tops = transport_ops_map[cfg->tcfg->type];
 
-  if (ret = tops->init(&t, cfg->tcfg), ret != XRPC_SUCCESS)
+  if (ret = tops->init(&s->transport, cfg->tcfg), ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("cannot create transport", ret);
 
   // Check if the transport is present in the transport_ops_map
@@ -102,7 +98,7 @@ int xrpc_server_create(struct xrpc_server **srv,
   // I/O system.
   const struct xrpc_io_system_ops *ops = io_ops_map[cfg->iocfg->type];
 
-  if (ret = ops->init(&ios, cfg->iocfg), ret != XRPC_SUCCESS)
+  if (ret = ops->init(&s->io, cfg->iocfg), ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("cannot create I/O system", ret);
 
   // Zero init the handlers
@@ -111,7 +107,8 @@ int xrpc_server_create(struct xrpc_server **srv,
   }
 
   // init the ringbuf
-  if (ret = xrpc_ringbuf_init(&rb, cfg->max_concurrent_requests),
+  if (ret =
+          xrpc_ringbuf_init(&s->active_contexts, cfg->max_concurrent_requests),
       ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("cannot create request context queue", ret);
 
@@ -129,15 +126,10 @@ int xrpc_server_create(struct xrpc_server **srv,
                  sizeof(struct xrpc_request_header) +
                  sizeof(struct xrpc_response_header) + MAX_REQUEST_SIZE;
 
-  if (ret =
-          xrpc_pool_init(&ctx_pool, cfg->max_concurrent_requests, context_size),
+  if (ret = xrpc_pool_init(&s->request_context_pool,
+                           cfg->max_concurrent_requests, context_size),
       ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("cannot create request context queue", ret);
-
-  s->transport = t;
-  s->io = ios;
-  s->active_contexts = rb;
-  s->request_context_pool = ctx_pool;
 
   *srv = s;
   return ret;
@@ -306,38 +298,41 @@ static void free_request_context(struct xrpc_server *srv,
 static void advance_request_state_machine(struct xrpc_request_context *ctx) {
 
   struct xrpc_io_operation *op = NULL;
+  int ret;
+  // try to get a new operation
+  if (ret = xrpc_io_operation_new(ctx->srv->io, &op), ret != XRPC_SUCCESS) {
+
+    ctx->state = XRPC_REQ_STATE_COMPLETED;
+    ctx->last_error = ret;
+    xrpc_ringbuf_push(ctx->srv->active_contexts, ctx);
+    return;
+  }
+
+  // common setup for the operation
+  op->conn = ctx->conn;
+  op->ctx = ctx;
+  op->on_complete = io_request_completed;
 
   switch (ctx->state) {
   case XRPC_REQ_STATE_READ_HEADER:
-    op = malloc(sizeof(struct xrpc_io_operation));
     op->type = XRPC_IO_READ;
-    op->conn = ctx->conn;
-    op->ctx = ctx;
     op->buf = ctx->request_header;
     op->len = sizeof(struct xrpc_request_header);
-    op->on_complete = io_request_completed;
 
     ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
     break;
   case XRPC_REQ_STATE_READ_BODY:
-    op = malloc(sizeof(struct xrpc_io_operation));
-    ctx->request_data = malloc(ctx->request_header->sz);
+    // ctx->request_data = malloc(ctx->request_header->sz);
     if (!ctx->request_data) {
       ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
 
-      op->conn = ctx->conn;
-      op->ctx = ctx;
       op->type = XRPC_IO_WRITE;
       op->len = sizeof(struct xrpc_response_header);
       op->buf = ctx->response_header;
-      op->on_complete = io_request_completed;
     } else {
-      op->conn = ctx->conn;
-      op->ctx = ctx;
       op->type = XRPC_IO_READ;
       op->len = ctx->request_header->sz;
       op->buf = ctx->request_data;
-      op->on_complete = io_request_completed;
     }
     ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
     break;
@@ -346,22 +341,19 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
     break;
 
   case XRPC_REQ_STATE_WRITE: {
-    op = malloc(sizeof(struct xrpc_io_operation));
 
     // Create single buffer for header + data
     size_t total_len =
         sizeof(struct xrpc_response_header) + ctx->response_header->sz;
     uint8_t *write_buffer = malloc(total_len);
 
+    op->type = XRPC_IO_WRITE;
+
     if (!write_buffer) {
       ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
       ctx->response_header->sz = 0;
-      op->ctx = ctx;
-      op->type = XRPC_IO_WRITE;
-      op->conn = ctx->conn;
       op->len = sizeof(struct xrpc_response_header);
       op->buf = ctx->response_header;
-      op->on_complete = io_request_completed;
     } else {
       // Copy header first
       memcpy(write_buffer, ctx->response_header,
@@ -374,20 +366,13 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
       }
       // Schedule single write operation
       op->type = XRPC_IO_WRITE;
-      op->ctx = ctx;
-      op->buf = write_buffer;
       op->conn = ctx->conn;
       op->len = total_len;
-      op->on_complete = io_request_completed;
+      op->buf = write_buffer;
     }
     ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
     break;
   case XRPC_REQ_STATE_COMPLETED:
-    if (op->status == XRPC_SUCCESS)
-      XRPC_BENCH_REQ_CLOSE_SUCC(op->conn->id, ctx->request_header->reqid);
-    else
-      XRPC_BENCH_REQ_CLOSE_ERR(op->conn->id, ctx->request_header->reqid);
-
     break;
   }
   }
@@ -413,7 +398,7 @@ static void io_request_completed(struct xrpc_io_operation *op) {
     ctx->last_error = op->status;
     connection_mark_for_close(ctx->conn);
 
-    free(op);
+    assert(xrpc_io_operation_free(ctx->srv->io, op) == XRPC_SUCCESS);
     op = NULL;
 
     /* Enqueue once for cleanup - server loop will free it */
@@ -467,7 +452,7 @@ static void io_request_completed(struct xrpc_io_operation *op) {
   }
 
   if (op) {
-    free(op);
+    assert(xrpc_io_operation_free(ctx->srv->io, op) == XRPC_SUCCESS);
     op = NULL;
   }
 

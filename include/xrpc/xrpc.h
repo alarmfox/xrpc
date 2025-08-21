@@ -154,7 +154,9 @@ struct xrpc_io_system_config {
   enum xrpc_io_system_type type;
   union {
   } config;
+  size_t max_concurrent_operations;
 };
+
 struct xrpc_server_config {
   struct xrpc_transport_config *tcfg;
   struct xrpc_io_system_config *iocfg;
