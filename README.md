@@ -96,7 +96,7 @@ make test
 
 ## Benchmarking
 
-For now, micro benchmark traces connection and requests allocations.
+For now, microbenchmark traces connection and requests allocations.
 
 Build benchmark server in `benchmark/tcp_echo_server.c` and run the server:
 
