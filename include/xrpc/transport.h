@@ -169,10 +169,11 @@ static inline void connection_unref(struct xrpc_transport *t,
 
       // if the ref_count <= 0 and the conn is closing close safely the
       // underlying connection
-      if (ref_count == 0 && c->is_closing) {
+      if (ref_count <= 0 && c->is_closing) {
         if (t->ops->close) t->ops->close(t, c);
         c->is_closed = true;
       }
+      break;
     }
   }
 }

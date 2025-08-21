@@ -124,14 +124,18 @@ static inline uint64_t xrpc_benchmark_timestamp_ns(void) {
  */
 #ifdef BENCHMARK
 
-#define XRPC_BENCH_COUNTER_INC(c) __atomic_fetch_add(&g_xrpc_bench_stats.c, 1);
-#define XRPC_BENCH_COUNTER_SUB(c) __atomic_fetch_sub(&g_xrpc_bench_stats.c, 1);
+#define XRPC_BENCH_COUNTER_INC(c)                                              \
+  __atomic_fetch_add(&g_xrpc_bench_stats.c, 1, __ATOMIC_RELAXED);
+#define XRPC_BENCH_COUNTER_SUB(c)                                              \
+  __atomic_fetch_sub(&g_xrpc_bench_stats.c, 1, __ATOMIC_RELAXED);
 
 #define XRPC_BENCH_EV_RECORD(type, connid, reqid, data)                        \
   do {                                                                         \
-    xrpc_benchmark_record_event(type, connid, reqid, data);                    \
+    xrpc_benchmark_event_record(type, connid, reqid, data);                    \
   } while (0)
+
 #else
+
 #define XRPC_BENCH_COUNTER_INC(c) ((void)0);
 #define XRPC_BENCH_COUNTER_SUB(c) ((void)0);
 
