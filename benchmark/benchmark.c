@@ -139,12 +139,14 @@ void xrpc_benchmark_stats_get(struct xrpc_benchmark_stats *s) {
 void xrpc_benchmark_stats_print(const struct xrpc_benchmark_stats *s) {
   if (!s) return;
 
-  printf("\nXRPC Server Benchmark Report\n");
-  printf("    Total requests: %lu\n", s->total_requests);
-  printf("    Completed requests: %lu\n", s->completed_requests);
-  printf("    Failed requests: %lu\n", s->failed_requests);
-  printf("    Total connections: %lu\n", s->total_connections);
-  printf("    Active connections: %lu\n", s->active_connections);
-  printf("    Total I/O operations: %lu\n", s->total_io_operations);
-  printf("\n");
+  printf("\n=====================================\n");
+  printf("       XRPC Server Benchmark Report   \n");
+  printf("=====================================\n");
+  printf("  Total requests       : %lu\n", s->total_requests);
+  printf("  Completed requests   : %lu\n", s->completed_requests);
+  printf("  Failed requests      : %lu\n", s->failed_requests);
+  printf("  Total connections    : %lu\n", s->total_connections);
+  printf("  Active connections   : %lu\n", s->active_connections);
+  printf("  Total I/O operations : %lu\n", s->total_io_operations);
+  printf("=====================================\n\n");
 }
