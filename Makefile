@@ -12,93 +12,97 @@ else
 CFLAGS += -O2
 endif
 
-# Testing flags and src
-TEST_EXTRA_CFLAGS = -Itest/
-BENCH_EXTRA_CFLAGS = -D_POSIX_C_SOURCE=199309L -Ibenchmark/
+# Testing / Benchmark flags
+TEST_CFLAGS  := $(CFLAGS) -Itest/
+BENCH_CFLAGS := $(CFLAGS) -D_POSIX_C_SOURCE=199309L -Ibenchmark/ 
 
-# Library code and objects
-CORE_SRCS = $(wildcard src/core/*.c)
-TRANSPORT_SRCS = $(wildcard src/transports/*.c)
-IO_SYSTEM_SRCS = $(wildcard src/io/*.c)
+# =========================
+#  Sources & Objects
+# =========================
+CORE_SRCS       := $(wildcard src/core/*.c)
+TRANSPORT_SRCS  := $(wildcard src/transports/*.c)
+IO_SYSTEM_SRCS  := $(wildcard src/io/*.c)
+ALL_SRCS        := $(CORE_SRCS) $(TRANSPORT_SRCS) $(IO_SYSTEM_SRCS)
 
-# Test code and objects
-TEST_SRCS = $(wildcard test/test_*.c)
-TEST_OBJS = $(TEST_SRCS:.c=.o)
-TEST_BINS = $(TEST_SRCS:.c=)
+ALL_OBJS        := $(ALL_SRCS:.c=.o)
+ALL_INSTR_OBJS  := $(ALL_SRCS:.c=_bench.o)
 
-# Benchmark code and objects
-BENCH_HELPER_SRC = benchmark/benchmark.c
-BENCH_PROG_SRCS = $(filter-out $(BENCH_HELPER_SRC), $(wildcard benchmark/*.c))
-BENCH_HELPER_OBJ = $(BENCH_HELPER_SRC:.c=.o)
-BENCH_OBJS = $(BENCH_PROG_SRCS:.c=.o)
-BENCH_BINS = $(BENCH_PROG_SRCS:.c=)
+# Tests
+TEST_SRCS := $(wildcard test/test_*.c)
+TEST_OBJS := $(TEST_SRCS:.c=.o)
+TEST_BINS := $(TEST_SRCS:.c=)
 
-ALL_SRCS = $(CORE_SRCS) $(TRANSPORT_SRCS) $(IO_SYSTEM_SRCS)
+# Benchmarks
+BENCH_HELPER_SRC := benchmark/benchmark.c
+BENCH_HELPER_OBJ := $(BENCH_HELPER_SRC:.c=.o)
+BENCH_PROG_SRCS  := $(filter-out $(BENCH_HELPER_SRC), $(wildcard benchmark/*.c))
+BENCH_OBJS       := $(BENCH_PROG_SRCS:.c=.o)
+BENCH_BINS       := $(BENCH_PROG_SRCS:.c=)
 
-# Non instrumented objects
-ALL_OBJS = $(ALL_SRCS:.c=.o)
-# Instrumented objects
-ALL_INSTR_OBJS = $(ALL_SRCS:.c=_bench.o)
+# =========================
+#  Targets
+# =========================
+.PHONY: all clean help examples test benchmark
+
+all: libxrpc.a test examples benchmark
 
 ## libxrpc.a: builds the library
 libxrpc.a: $(ALL_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
-## libxrpc.a: builds the library
-libxrpc_bench.a: CFLAGS+=-DBENCHMARK
+## libxrpc_bench.a: builds the instrumented benchmark library
+libxrpc_bench.a: CFLAGS += -DBENCHMARK
 libxrpc_bench.a: $(ALL_INSTR_OBJS) $(BENCH_HELPER_OBJ)
 	$(AR) $(ARFLAGS) $@ $^
 
-## examples: builds examples
+## examples: builds example applications
 examples: libxrpc.a
 	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc
 
-## test: builds and runs test
-test: $(TEST_BINS)
-	@for test in $(TEST_BINS); do \
-		./$${test} || exit 1; \
-	done
-
-	@echo "Tests completed successfully"
-
-# builds the test
-test/%.o: test/%.c
-	$(CC) $(CFLAGS) $(TEST_EXTRA_CFLAGS) -c -o $@ $<
-
-# test binary compilation
-test/%: test/%.o libxrpc.a
-	$(CC) $(CFLAGS) $(TEST_EXTRA_CFLAGS) $< -o $@ -L. -lxrpc
-
 ## benchmark: builds the benchmark application
-benchmark: $(BENCH_BINS) $(BENCH_HELPER_OBJ)
+benchmark: $(BENCH_BINS) $(BENCH_HELPER_OBJ) libxrpc_bench.a
+
+## test: builds and runs all tests
+test: $(TEST_BINS)
+	@for t in $(TEST_BINS); do \
+		echo "Running $$t..."; \
+		./$$t || exit 1; \
+	done
+	@echo "All tests passed ✅"
+
+# =========================
+#  Pattern Rules
+# =========================
+test/%.o: test/%.c
+	$(CC) $(TEST_CFLAGS) -c -o $@ $<
+
+test/%: test/%.o libxrpc.a
+	$(CC) $(TEST_CFLAGS) $< -o $@ -L. -lxrpc
 
 benchmark/benchmark.o: benchmark/benchmark.c
-	$(CC) $(CFLAGS) $(BENCH_EXTRA_CFLAGS) -c -o $@ $<
+	$(CC) $(BENCH_CFLAGS) -c -o $@ $<
 
-# builds the benchmark 
 benchmark/%.o: benchmark/%.c
-	$(CC) $(CFLAGS) $(BENCH_EXTRA_CFLAGS) -c -o $@ $<
+	$(CC) $(BENCH_CFLAGS) -c -o $@ $<
 
-# builds all the benchmark executables
 benchmark/%: benchmark/%.o libxrpc_bench.a
-	$(CC) $(CFLAGS) $(BENCH_EXTRA_CFLAGS) $< -o $@ -L. -lxrpc_bench -lpthread
+	$(CC) $(BENCH_CFLAGS) $< -o $@ -L. -lxrpc_bench -lpthread
 
-# fallback to compile every C file
-%_bench.o: %.c 
+%_bench.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# fallback to compile every C file
-%.o: %.c 
+%.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-## clean: remove all artifacts
+## clean: remove all build artifacts
 clean:
-	rm -f $(ALL_OBJS) $(TEST_BINS) $(ALL_INSTR_OBJS) libxrpc.a libxrpc_bench.a \
-		examples/*/server $(BENCH_HELPER_OBJ) $(BENCH_BINS)
-
-.PHONY: examples clean help test benchmark
+	$(RM) $(ALL_OBJS) $(ALL_INSTR_OBJS) \
+	      $(TEST_OBJS) $(TEST_BINS) \
+	      $(BENCH_OBJS) $(BENCH_BINS) $(BENCH_HELPER_OBJ) \
+	      libxrpc.a libxrpc_bench.a \
+	      examples/*/server
 
 ## help: prints this help message
 help:
-	@echo "Usage: \n"
-	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
+	@echo "Usage: make [target]\n"
+	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' | sed -e 's/^/ /'
