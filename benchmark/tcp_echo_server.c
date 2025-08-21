@@ -40,9 +40,9 @@ static void *report_handler(void *params) {
     xrpc_benchmark_stats_get(&stats);
     xrpc_benchmark_stats_print(&stats);
     sleep(sleep_interval);
+    printf("\033c");
   }
 
-  printf("\n=== Final Benchmark Report === \n");
   xrpc_benchmark_stats_get(&stats);
   xrpc_benchmark_stats_print(&stats);
   pthread_exit(0);
