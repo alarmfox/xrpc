@@ -1,4 +1,4 @@
-#include <stdatomic.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -55,7 +55,7 @@ int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
   }
 
   // initialize the free count as atomic variable
-  atomic_init(&_p->free_count, _p->capacity);
+  __atomic_store_n(&_p->free_count, _p->capacity, __ATOMIC_SEQ_CST);
 
   *p = _p;
 
@@ -75,12 +75,13 @@ int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
  * @return XRPC_INTERNAL_ERR_POOL_FULL if no available elements
  */
 int xrpc_pool_get(struct xrpc_pool *p, void **elem) {
-  size_t current = atomic_load(&p->free_count);
+  size_t current = __atomic_load_n(&p->free_count, __ATOMIC_RELAXED);
 
   // try to decrement the counter atomically
   while (current > 0) {
     // if successfull return the target pointer
-    if (atomic_compare_exchange_weak(&p->free_count, &current, current - 1)) {
+    if (__atomic_compare_exchange_n(&p->free_count, &current, current - 1, true,
+                                    __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
       *elem = p->free_list[current - 1];
       return XRPC_SUCCESS;
     }
@@ -113,13 +114,14 @@ int xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
   if ((elem_ptr - start) % p->elem_size != 0)
     return XRPC_INTERNAL_ERR_POOL_INVALID_ARG;
 
-  current_free = atomic_load(&p->free_count);
+  current_free = __atomic_load_n(&p->free_count, __ATOMIC_SEQ_CST);
 
   // try to increment the top of the stack to find a place where to store the
   // address
   while (current_free < p->capacity) {
-    if (atomic_compare_exchange_weak(&p->free_count, &current_free,
-                                     current_free + 1)) {
+    if (__atomic_compare_exchange_n(&p->free_count, &current_free,
+                                    current_free + 1, true, __ATOMIC_RELAXED,
+                                    __ATOMIC_RELAXED)) {
 
       p->free_list[current_free] = (void *)elem;
       return XRPC_SUCCESS;

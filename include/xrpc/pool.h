@@ -1,7 +1,6 @@
 #ifndef XRPC_POOL_H
 #define XRPC_POOL_H
 
-#include <stdatomic.h>
 #include <stddef.h>
 
 // Number of bytes of the cache line.
@@ -17,11 +16,11 @@
  * - Atomic operation for thread safety
  */
 struct xrpc_pool {
-  size_t elem_size; // size of a single element (as bytes including aligment)
-  size_t capacity;  // max number of elmentsn (as elements count)
-  _Atomic size_t free_count; // current available element in the free_list
-  void *items;               // pointer to the start of memory region
-  void **free_list;          // pointer to a stack which contains free pointers
+  size_t elem_size;  // size of a single element (as bytes including aligment)
+  size_t capacity;   // max number of elmentsn (as elements count)
+  size_t free_count; // current available element in the free_list
+  void *items;       // pointer to the start of memory region
+  void **free_list;  // pointer to a stack which contains free pointers
 } __attribute__((aligned(CACHE_LINE_SIZE)));
 
 /*
@@ -78,7 +77,7 @@ static inline size_t align_size(const size_t alignement, const size_t size) {
   return (size + alignement - 1) & ~(alignement - 1);
 }
 static inline size_t xrpc_pool_count(struct xrpc_pool *p) {
-  return atomic_load(&p->free_count);
+  return __atomic_load_n(&p->free_count, __ATOMIC_RELEASE);
 }
 
 #endif // !XRPC_POOL_H
