@@ -74,22 +74,36 @@ static void print_usage(const char *program) {
 static void print_config(const struct xrpc_server_config *cfg) {
   const struct xrpc_transport_tcp_config *c = &cfg->tcfg->config.tcp;
   char buf[64];
-  printf(">> TCP Server configuration\n");
-  printf("  TCP_NODELAY %s\n", c->nodelay ? "enabled" : "disabled");
-  printf("  SO_REUSEADDR %s\n", c->reuseaddr ? "enabled" : "disabled");
-  printf("  SO_REUSEPORT %s\n", c->reuseport ? "enabled" : "disabled");
-  printf("  SO_KEEPALIVE %s\n", c->keepalive ? "enabled" : "disabled");
-  printf("  O_NONBLOCK%s\n", c->nonblocking ? "enabled" : "disabled");
 
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPIDLE", buf, c->keepalive_idle);
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPINTVL", buf, c->keepalive_interval);
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPCNT", buf, c->keepalive_probes);
-  PRINT_STR_OPT_OR_DISABLED("SO_SNDTIMEO", buf, c->send_timeout_ms);
-  PRINT_STR_OPT_OR_DISABLED("SO_RCVTIMEO", buf, c->recv_timeout_ms);
-  PRINT_STR_OPT_OR_DISABLED("SO_RCVBUF", buf, c->recv_buffer_size);
-  PRINT_STR_OPT_OR_DISABLED("SO_SNDBUF", buf, c->send_buffer_size);
+  printf("\n=====================================\n");
+  printf("       XRPC TCP Server Configuration  \n");
+  printf("=====================================\n");
 
-  printf("  Connection pool size %d\n", c->connection_pool_size);
+  printf("  TCP_NODELAY           : %s\n", c->nodelay ? "enabled" : "disabled");
+  printf("  SO_REUSEADDR          : %s\n",
+         c->reuseaddr ? "enabled" : "disabled");
+  printf("  SO_REUSEPORT          : %s\n",
+         c->reuseport ? "enabled" : "disabled");
+  printf("  SO_KEEPALIVE          : %s\n",
+         c->keepalive ? "enabled" : "disabled");
+  printf("  O_NONBLOCK            : %s\n",
+         c->nonblocking ? "enabled" : "disabled");
+
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPIDLE          :", buf, c->keepalive_idle);
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPINTVL         :", buf,
+                            c->keepalive_interval);
+  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPCNT           :", buf,
+                            c->keepalive_probes);
+  PRINT_STR_OPT_OR_DISABLED("SO_SNDTIMEO           :", buf, c->send_timeout_ms);
+  PRINT_STR_OPT_OR_DISABLED("SO_RCVTIMEO           :", buf, c->recv_timeout_ms);
+  PRINT_STR_OPT_OR_DISABLED("SO_RCVBUF             :", buf,
+                            c->recv_buffer_size);
+  PRINT_STR_OPT_OR_DISABLED("SO_SNDBUF             :", buf,
+                            c->send_buffer_size);
+
+  printf("  Connections pool size : %d\n", c->connection_pool_size);
+
+  printf("=====================================\n\n");
 }
 
 int main(int argc, char **argv) {
