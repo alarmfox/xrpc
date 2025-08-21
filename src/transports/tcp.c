@@ -24,7 +24,7 @@ const struct xrpc_connection_ops xrpc_connection_tcp_ops;
 
 struct xrpc_transport_data {
   struct xrpc_pool *pool;
-  int current_id;
+  uint64_t current_id;
   int fd;
   int accept_timeout_ms;
   bool nonblocking;
@@ -201,8 +201,9 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
   data->fd = fd;
   data->accept_timeout_ms = args->accept_timeout_ms;
   data->nonblocking = args->nonblocking;
-  data->current_id = 0;
   data->pool = pool;
+  // make id atomic
+  __atomic_store_n(&data->current_id, 0, __ATOMIC_SEQ_CST);
 
   t->ops = &xrpc_transport_tcp_ops;
   t->data = data;
@@ -265,10 +266,12 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
   // setup connection
   conn->data = (void *)cdata;
   conn->ops = &xrpc_connection_tcp_ops;
-  conn->id = data->current_id++;
   conn->is_closed = false;
   conn->is_closing = false;
-  conn->ref_count = 0;
+
+  // get connection id atomically
+  conn->id = __atomic_fetch_add(&data->current_id, 1, __ATOMIC_RELAXED);
+  __atomic_store_n(&conn->ref_count, 0, __ATOMIC_SEQ_CST);
 
   XRPC_DEBUG_PRINT("tcp connection accepted from %s:%d (id=%lu)",
                    inet_ntoa(client.sin_addr), ntohs(client.sin_port),
