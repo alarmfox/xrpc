@@ -1,7 +1,6 @@
 CompileFlags: 
   Add:
     - "-Iinclude/"
-    - "-Iexternal/mbedtls/include"
-    - "-DDEBUG"
     - "-D_POSIX_C_SOURCE=199309L"
-  CompilationDatabase: .
+    - "-DBENCHMARK"
+  CompilationDatabase: ..

@@ -1,4 +1,5 @@
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,15 @@
 #define OP_ECHO 0x0
 #define OP_SUM 0x1
 #define OP_DOT_PROD 0x2
+
+static struct xrpc_server *srv = NULL;
+
+// Signal handler for clean shutdown
+static void signal_handler(int sig) {
+  (void)sig;
+  xrpc_server_stop(srv);
+  printf("\nShutting down server...\n");
+}
 
 static int echo_handler(const struct xrpc_request *req,
                         struct xrpc_response *res) {
@@ -84,7 +94,6 @@ static int dot_product_handler(const struct xrpc_request *req,
 }
 
 int main(void) {
-  struct xrpc_server *srv = NULL;
   struct xrpc_transport_config tcfg =
       XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
   struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING};
@@ -93,6 +102,9 @@ int main(void) {
   tcfg.config.tcp.nonblocking = false;
   tcfg.config.tcp.accept_timeout_ms = 100;
 
+  // Set up signal handling for clean shutdown
+  signal(SIGINT, signal_handler);
+  signal(SIGTERM, signal_handler);
   if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");
     goto exit;
@@ -119,8 +131,10 @@ int main(void) {
   xrpc_server_run(srv);
 
 exit:
-  xrpc_server_free(srv);
-  srv = NULL;
+  if (srv) {
+    xrpc_server_free(srv);
+    srv = NULL;
+  }
 
   return 0;
 }

@@ -27,9 +27,11 @@ TEST_OBJS = $(TEST_SRCS:.c=.o)
 TEST_BINS = $(TEST_SRCS:.c=)
 
 # Benchmark code and objects
-BENCHMARK_SRCS = $(wildcard benchmark/*.c)
-BENCH_OBJS = $(BENCHMARK_SRCS:.c=.o)
-BENCH_BINS = $(BENCHMARK_SRCS:.c=)
+BENCH_HELPER_SRC = benchmark/benchmark.c
+BENCH_PROG_SRCS = $(filter-out $(BENCH_HELPER_SRC), $(wildcard benchmark/*.c))
+BENCH_HELPER_OBJ = $(BENCH_HELPER_SRC:.c=.o)
+BENCH_OBJS = $(BENCH_PROG_SRCS:.c=.o)
+BENCH_BINS = $(BENCH_PROG_SRCS:.c=)
 
 ALL_SRCS = $(CORE_SRCS) $(TRANSPORT_SRCS) $(IO_SYSTEM_SRCS)
 
@@ -44,7 +46,7 @@ libxrpc.a: $(ALL_OBJS)
 
 ## libxrpc.a: builds the library
 libxrpc_bench.a: CFLAGS+=-DBENCHMARK
-libxrpc_bench.a: $(ALL_INSTR_OBJS)
+libxrpc_bench.a: $(ALL_INSTR_OBJS) $(BENCH_HELPER_OBJ)
 	$(AR) $(ARFLAGS) $@ $^
 
 ## examples: builds examples
@@ -68,7 +70,10 @@ test/%: test/%.o libxrpc.a
 	$(CC) $(CFLAGS) $(TEST_EXTRA_CFLAGS) $< -o $@ -L. -lxrpc
 
 ## benchmark: builds the benchmark application
-benchmark: $(BENCH_BINS)
+benchmark: $(BENCH_BINS) $(BENCH_HELPER_OBJ)
+
+benchmark/benchmark.o: benchmark/benchmark.c
+	$(CC) $(CFLAGS) $(BENCH_EXTRA_CFLAGS) -c -o $@ $<
 
 # builds the benchmark 
 benchmark/%.o: benchmark/%.c
@@ -76,7 +81,7 @@ benchmark/%.o: benchmark/%.c
 
 # builds all the benchmark executables
 benchmark/%: benchmark/%.o libxrpc_bench.a
-	$(CC) $(CFLAGS) $(BENCH_EXTRA_CFLAGS) $< -o $@ -L. -lxrpc_bench
+	$(CC) $(CFLAGS) $(BENCH_EXTRA_CFLAGS) $< -o $@ -L. -lxrpc_bench -lpthread
 
 # fallback to compile every C file
 %_bench.o: %.c 
@@ -88,7 +93,8 @@ benchmark/%: benchmark/%.o libxrpc_bench.a
 
 ## clean: remove all artifacts
 clean:
-	rm -f $(ALL_OBJS) $(TEST_BINS) $(ALL_INSTR_OBJS) libxrpc.a libxrpc_bench.a examples/*/server 
+	rm -f $(ALL_OBJS) $(TEST_BINS) $(ALL_INSTR_OBJS) libxrpc.a libxrpc_bench.a \
+		examples/*/server $(BENCH_HELPER_OBJ) $(BENCH_BINS)
 
 .PHONY: examples clean help test benchmark
 

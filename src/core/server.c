@@ -37,6 +37,7 @@ struct xrpc_server {
   struct xrpc_io_system *io;
 
   struct xrpc_ringbuf *active_contexts;
+  int running;
 };
 
 // Utils functions to manage xrpc_request_context lifecycle
@@ -137,7 +138,10 @@ int xrpc_server_run(struct xrpc_server *srv) {
   struct xrpc_connection *conn = NULL;
   struct xrpc_request_context *ctx = NULL;
 
-  while (1) {
+  // mark the server as running
+  __atomic_store_n(&srv->running, 1, __ATOMIC_SEQ_CST);
+
+  while (__atomic_load_n(&srv->running, __ATOMIC_RELAXED)) {
     if (ret = srv->transport->ops->accept(srv->transport, &conn),
         ret == XRPC_SUCCESS) {
 
@@ -191,6 +195,17 @@ int xrpc_server_run(struct xrpc_server *srv) {
   }
 
   return ret;
+}
+
+/**
+ * @brief Flags the server to stop if running
+ *
+ * TODO: make user to choice between a graceful shutdown or to force
+ *
+ * @param srv         Server instance.
+ */
+void xrpc_server_stop(struct xrpc_server *srv) {
+  __atomic_store_n(&srv->running, 0, __ATOMIC_SEQ_CST);
 }
 
 void xrpc_server_free(struct xrpc_server *srv) {

@@ -221,6 +221,16 @@ int xrpc_server_register(struct xrpc_server *srv, const size_t op,
 int xrpc_server_run(struct xrpc_server *srv);
 
 /**
+ * @brief Flags the server to stop if running
+ *
+ * TODO: make user to choice between a graceful shutdown or to force
+ *
+ * @param srv         Server instance.
+ * @return 0 on success, -1 on fatal error.
+ */
+void xrpc_server_stop(struct xrpc_server *srv);
+
+/**
  * @brief Free server resources.
  *
  * Frees ring buffers, closes connections, and releases the transport.
