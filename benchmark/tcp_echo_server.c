@@ -73,9 +73,9 @@ static void print_config(const struct xrpc_server_config *cfg) {
   const struct xrpc_transport_tcp_config *c = &cfg->tcfg->config.tcp;
   char buf[64];
 
-  printf("\n=====================================\n");
-  printf("       XRPC TCP Server Configuration  \n");
-  printf("=====================================\n");
+  printf("\n========================================\n");
+  printf(" XRPC TCP Server Benchmark Configuration ");
+  printf("\n========================================\n");
 
   printf("  TCP_NODELAY           : %s\n", c->nodelay ? "enabled" : "disabled");
   printf("  SO_REUSEADDR          : %s\n",
@@ -101,7 +101,7 @@ static void print_config(const struct xrpc_server_config *cfg) {
 
   printf("  Connections pool size : %d\n", c->connection_pool_size);
 
-  printf("=====================================\n\n");
+  printf("========================================\n\n");
 }
 
 int main(int argc, char **argv) {
