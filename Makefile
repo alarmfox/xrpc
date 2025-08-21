@@ -4,7 +4,7 @@ AR = ar
 ARFLAGS = rcs
 
 CFLAGS = -std=c99 -Wall -Wextra
-CFLAGS += -Iinclude/ 
+CFLAGS += -Iinclude/ -Ibenchmark/ -D_POSIX_C_SOURCE=199309L
 
 ifeq ($(DEBUG),1)
 CFLAGS += -O0 -g3 -DDEBUG
@@ -14,7 +14,6 @@ endif
 
 # Testing / Benchmark flags
 TEST_CFLAGS  := $(CFLAGS) -Itest/
-BENCH_CFLAGS := $(CFLAGS) -D_POSIX_C_SOURCE=199309L -Ibenchmark/ 
 
 # =========================
 #  Sources & Objects
@@ -44,7 +43,7 @@ BENCH_BINS       := $(BENCH_PROG_SRCS:.c=)
 # =========================
 .PHONY: all clean help examples test benchmark
 
-all: libxrpc.a test examples benchmark
+all: libxrpc.a test examples
 
 ## libxrpc.a: builds the library
 libxrpc.a: $(ALL_OBJS)
@@ -80,13 +79,13 @@ test/%: test/%.o libxrpc.a
 	$(CC) $(TEST_CFLAGS) $< -o $@ -L. -lxrpc
 
 benchmark/benchmark.o: benchmark/benchmark.c
-	$(CC) $(BENCH_CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 benchmark/%.o: benchmark/%.c
-	$(CC) $(BENCH_CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 benchmark/%: benchmark/%.o libxrpc_bench.a
-	$(CC) $(BENCH_CFLAGS) $< -o $@ -L. -lxrpc_bench -lpthread
+	$(CC) $(CFLAGS) $< -o $@ -L. -lxrpc_bench -lpthread
 
 %_bench.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "benchmark.h"
 #include "xrpc/debug.h"
 #include "xrpc/error.h"
 #include "xrpc/io.h"
@@ -405,6 +406,8 @@ static void io_request_completed(struct xrpc_io_operation *op) {
       ctx->state = XRPC_REQ_STATE_PROCESS;
     else
       ctx->state = XRPC_REQ_STATE_READ_BODY;
+    // trace
+    XRPC_BENCH_REQ_START(op->conn->id, ctx->request_header->reqid);
     break;
     // on body read schedule the process
   case XRPC_REQ_STATE_READ_BODY:

@@ -1,5 +1,6 @@
 #include <stdlib.h>
 
+#include "benchmark.h"
 #include "xrpc/error.h"
 #include "xrpc/io.h"
 #include "xrpc/transport.h"
@@ -47,6 +48,8 @@ static int xprc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
 
   op->status = ret;
   if (op->on_complete) op->on_complete(op);
+
+  XRPC_BENCH_IO_OP_TRACE(op->conn->id, op->request_header->reqid);
 
   return XRPC_SUCCESS;
 }
