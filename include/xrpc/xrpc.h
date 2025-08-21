@@ -158,6 +158,8 @@ struct xrpc_io_system_config {
 struct xrpc_server_config {
   struct xrpc_transport_config *tcfg;
   struct xrpc_io_system_config *iocfg;
+
+  size_t max_concurrent_requests;
 };
 
 /*

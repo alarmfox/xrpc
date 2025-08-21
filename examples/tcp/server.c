@@ -131,6 +131,7 @@ static void print_config(const struct xrpc_server_config *cfg) {
                             c->send_buffer_size);
 
   printf("  Connections pool size : %d\n", c->connection_pool_size);
+  printf("  Requests pool size    : %lu\n", cfg->max_concurrent_requests);
 
   printf("========================================\n");
 }
@@ -139,10 +140,12 @@ int main(void) {
   struct xrpc_transport_config tcfg =
       XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
   struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING};
-  struct xrpc_server_config cfg = {.tcfg = &tcfg, .iocfg = &iocfg};
+  struct xrpc_server_config cfg = {
+      .tcfg = &tcfg, .iocfg = &iocfg, .max_concurrent_requests = 1024};
 
   tcfg.config.tcp.nonblocking = false;
   tcfg.config.tcp.accept_timeout_ms = 100;
+  tcfg.config.tcp.connection_pool_size = 1024;
 
   // Set up signal handling for clean shutdown
   signal(SIGINT, signal_handler);
@@ -175,7 +178,6 @@ int main(void) {
   print_config(&cfg);
 
   printf("Available operations:\n");
-
   printf("  0x%02X - Echo (mirror input data)\n", OP_ECHO);
   printf("  0x%02X - Sum (sums 2 uint64_t)\n", OP_SUM);
   printf("  0x%02X - Dot Product (performs dot product on equally size "
