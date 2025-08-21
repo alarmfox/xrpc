@@ -197,7 +197,7 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
 
   if (ret = xrpc_pool_init(&pool, args->connection_pool_size, conn_size),
       ret != XRPC_SUCCESS)
-    XRPC_PRINT_ERR_AND_RETURN("connection poll init error", ret);
+    XRPC_PRINT_ERR_AND_RETURN("connection pool init error", ret);
 
   data->fd = fd;
   data->accept_timeout_ms = args->accept_timeout_ms;
@@ -227,7 +227,6 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
   // If the socket is blocking and `accept_timeout > 0`, we
   //  need to use `poll` to exit after a certain `accept_timeout`. Otherwise we
   //  can use the normal accept.
-
   if (!data->nonblocking && data->accept_timeout_ms > 0) {
     struct pollfd pfds[1];
 

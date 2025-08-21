@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -5,12 +6,13 @@
 #include "xrpc/debug.h"
 #include "xrpc/error.h"
 #include "xrpc/io.h"
+#include "xrpc/pool.h"
 #include "xrpc/ringbuf.h"
 #include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
 #define MAX_HANDLERS 64
-#define MAX_REQUEST_SIZE (1024 * 1024 * 4) // 4M
+#define MAX_REQUEST_SIZE (1024 * 1024) // 1M
 
 struct xrpc_request_context {
   enum state {
@@ -26,17 +28,17 @@ struct xrpc_request_context {
   struct xrpc_connection *conn;
 
   struct xrpc_request_header *request_header;
-  uint8_t *request_data;
-
   struct xrpc_response_header *response_header;
+
   uint8_t *response_data;
+  uint8_t *request_data;
 };
 
 struct xrpc_server {
   xrpc_handler_fn handlers[MAX_HANDLERS];
   struct xrpc_transport *transport;
   struct xrpc_io_system *io;
-
+  struct xrpc_pool *request_context_pool;
   struct xrpc_ringbuf *active_contexts;
   int running;
 };
@@ -45,7 +47,8 @@ struct xrpc_server {
 static int create_request_context(struct xrpc_server *srv,
                                   struct xrpc_connection *conn,
                                   struct xrpc_request_context **ctx);
-static void free_request_context(struct xrpc_request_context *ctx);
+static void free_request_context(struct xrpc_server *s,
+                                 struct xrpc_request_context *ctx);
 static void advance_request_state_machine(struct xrpc_request_context *ctx);
 static void process(struct xrpc_request_context *ctx);
 static void io_request_completed(struct xrpc_io_operation *op);
@@ -70,6 +73,8 @@ int xrpc_server_create(struct xrpc_server **srv,
   struct xrpc_transport *t = NULL;
   struct xrpc_io_system *ios = NULL;
   struct xrpc_ringbuf *rb = NULL;
+  struct xrpc_pool *ctx_pool = NULL;
+  size_t context_size;
 
   if (!cfg)
     XRPC_PRINT_ERR_AND_RETURN("config is NULL", XRPC_API_ERR_INVALID_ARGS);
@@ -106,12 +111,34 @@ int xrpc_server_create(struct xrpc_server **srv,
   }
 
   // init the ringbuf
-  if (ret = xrpc_ringbuf_init(&rb, 100), ret != XRPC_SUCCESS)
+  if (ret = xrpc_ringbuf_init(&rb, cfg->max_concurrent_requests),
+      ret != XRPC_SUCCESS)
+    XRPC_PRINT_ERR_AND_RETURN("cannot create request context queue", ret);
+
+  /*
+   * Init the context_pool with total size = struct size + MAX_REQUEST_SIZE +
+   * headers size In this way we can save 3 allocations: 1 for the request body
+   * and 2 for the headers. The context layout is:
+   *
+   * +-----------------+---------------+----------------+----------------+
+   * | request_context |request_header |response_header |request_body   |
+   * +-----------------+---------------+----------------+----------------+
+   *
+   */
+  context_size = sizeof(struct xrpc_request_context) +
+                 sizeof(struct xrpc_request_header) +
+                 sizeof(struct xrpc_response_header) + MAX_REQUEST_SIZE;
+
+  if (ret =
+          xrpc_pool_init(&ctx_pool, cfg->max_concurrent_requests, context_size),
+      ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("cannot create request context queue", ret);
 
   s->transport = t;
   s->io = ios;
   s->active_contexts = rb;
+  s->request_context_pool = ctx_pool;
+
   *srv = s;
   return ret;
 }
@@ -170,7 +197,7 @@ int xrpc_server_run(struct xrpc_server *srv) {
       // completion and free the resource completed body reading, we are ready
       if (!connection_is_valid(ctx->conn) ||
           ctx->state == XRPC_REQ_STATE_COMPLETED) {
-        free_request_context(ctx);
+        free_request_context(srv, ctx);
         ctx = NULL;
         continue;
       }
@@ -229,51 +256,50 @@ void xrpc_server_free(struct xrpc_server *srv) {
 static int create_request_context(struct xrpc_server *srv,
                                   struct xrpc_connection *conn,
                                   struct xrpc_request_context **ctx) {
+
   // don't create context for closing connection, closed or invalid connections
   if (!conn || !connection_is_valid(conn)) return XRPC_API_ERR_INVALID_CONN;
 
-  struct xrpc_request_context *_ctx =
-      malloc(sizeof(struct xrpc_request_context));
+  if (xrpc_pool_get(srv->request_context_pool, (void **)ctx) != XRPC_SUCCESS)
+    return XRPC_INTERNAL_ERR_ALLOC;
 
-  if (!_ctx) return XRPC_API_ERR_ALLOC;
+  if (!ctx) return XRPC_API_ERR_ALLOC;
 
-  _ctx->last_error = XRPC_SUCCESS;
-  _ctx->request_header = malloc(sizeof(struct xrpc_request_header));
-  _ctx->response_header = malloc(sizeof(struct xrpc_response_header));
-  _ctx->request_data = NULL;
-  _ctx->response_data = NULL;
-  _ctx->srv = srv;
-  _ctx->conn = conn;
-  _ctx->state = XRPC_REQ_STATE_READ_HEADER;
+  (*ctx)->last_error = XRPC_SUCCESS;
+  (*ctx)->request_header = (struct xrpc_request_header *)(*ctx) +
+                           sizeof(struct xrpc_request_context);
+  (*ctx)->response_header = (struct xrpc_response_header *)(*ctx) +
+                            sizeof(struct xrpc_request_context) +
+                            sizeof(struct xrpc_request_header);
+  (*ctx)->request_data =
+      (uint8_t *)(*ctx) + sizeof(struct xrpc_request_context) +
+      sizeof(struct xrpc_request_header) + sizeof(struct xrpc_response_header);
 
-  if (!_ctx->request_header || !_ctx->response_header)
-    return XRPC_API_ERR_ALLOC;
+  (*ctx)->response_data = NULL;
+  (*ctx)->srv = srv;
+  (*ctx)->conn = conn;
+  (*ctx)->state = XRPC_REQ_STATE_READ_HEADER;
 
   // increment refernce count to the connection
   connection_ref(srv->transport, conn);
 
-  *ctx = _ctx;
-
   return XRPC_SUCCESS;
 }
 
-static void free_request_context(struct xrpc_request_context *ctx) {
+static void free_request_context(struct xrpc_server *srv,
+                                 struct xrpc_request_context *ctx) {
   if (!ctx) return;
+  size_t context_size = sizeof(struct xrpc_request_context) +
+                        sizeof(struct xrpc_request_header) +
+                        sizeof(struct xrpc_response_header) + MAX_REQUEST_SIZE;
 
-  if (ctx->request_header) free(ctx->request_header);
-  if (ctx->response_header) free(ctx->response_header);
-  if (ctx->request_data) free(ctx->request_data);
   if (ctx->response_data) free(ctx->response_data);
 
   if (ctx->conn) connection_unref(ctx->srv->transport, ctx->conn);
 
-  ctx->request_header = NULL;
-  ctx->response_header = NULL;
-  ctx->request_data = NULL;
-  ctx->response_data = NULL;
-  ctx->conn = NULL;
+  memset(ctx, 0, context_size);
 
-  free(ctx);
+  assert(xrpc_pool_put(srv->request_context_pool, ctx) == XRPC_SUCCESS);
 }
 
 // Schedule an I/O operation based on the current request state

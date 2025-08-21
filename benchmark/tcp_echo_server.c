@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <signal.h>
@@ -100,6 +101,7 @@ static void print_config(const struct xrpc_server_config *cfg) {
                             c->send_buffer_size);
 
   printf("  Connections pool size : %d\n", c->connection_pool_size);
+  printf("  Requests pool size    : %lu\n", cfg->max_concurrent_requests);
 
   printf("========================================\n\n");
 }
@@ -149,9 +151,10 @@ int main(int argc, char **argv) {
   tcfg.config.tcp.accept_timeout_ms = 100;     // Allow periodic reports
   tcfg.config.tcp.nodelay = true;              // Minimize latency
   tcfg.config.tcp.connection_pool_size = 1000; // Handle many connections
+  cfg.max_concurrent_requests = 1024;
 
   printf("Creating XRPC Server for benchmarking on %s:%d\n",
-         address == INADDR_ANY ? "0.0.0.0" : "127.0.0.1", port);
+         inet_ntoa(tcfg.config.tcp.addr.sin_addr), port);
 
   print_config(&cfg);
 
@@ -181,8 +184,8 @@ int main(int argc, char **argv) {
   }
 
   xrpc_server_run(srv);
-exit:
   if (report_interval > 0) pthread_join(report_thread_id, 0);
+exit:
   if (srv) {
     xrpc_server_free(srv);
     srv = NULL;
