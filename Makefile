@@ -3,7 +3,7 @@ AR = ar
 
 ARFLAGS = rcs
 
-CFLAGS = -std=c99 -Wall -Wextra -fPIC
+CFLAGS = -std=c99 -Wall -Wextra
 CFLAGS += -Iinclude/ 
 
 ifeq ($(DEBUG),1)
@@ -13,25 +13,39 @@ CFLAGS += -O2
 endif
 
 # Testing flags and src
-TEST_CFLAGS = $(CFLAGS) -Itest/
+TEST_EXTRA_CFLAGS = -Itest/
+BENCH_EXTRA_CFLAGS = -D_POSIX_C_SOURCE=199309L -Ibenchmark/
 
-TEST_SRCS = $(wildcard test/test_*.c)
+# Library code and objects
 CORE_SRCS = $(wildcard src/core/*.c)
 TRANSPORT_SRCS = $(wildcard src/transports/*.c)
 IO_SYSTEM_SRCS = $(wildcard src/io/*.c)
 
-ALL_SRCS = $(CORE_SRCS) $(TRANSPORT_SRCS) $(IO_SYSTEM_SRCS)
-ALL_OBJS = $(ALL_SRCS:.c=.o)
+# Test code and objects
+TEST_SRCS = $(wildcard test/test_*.c)
 TEST_OBJS = $(TEST_SRCS:.c=.o)
 TEST_BINS = $(TEST_SRCS:.c=)
 
+# Benchmark code and objects
+BENCHMARK_SRCS = $(wildcard benchmark/*.c)
+BENCH_OBJS = $(BENCHMARK_SRCS:.c=.o)
+BENCH_BINS = $(BENCHMARK_SRCS:.c=)
+
+ALL_SRCS = $(CORE_SRCS) $(TRANSPORT_SRCS) $(IO_SYSTEM_SRCS)
+
+# Non instrumented objects
+ALL_OBJS = $(ALL_SRCS:.c=.o)
+# Instrumented objects
+ALL_INSTR_OBJS = $(ALL_SRCS:.c=_bench.o)
 
 ## libxrpc.a: builds the library
 libxrpc.a: $(ALL_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
-%.o: %.c 
-	$(CC) $(CFLAGS) -c -o $@ $<
+## libxrpc.a: builds the library
+libxrpc_bench.a: CFLAGS+=-DBENCHMARK
+libxrpc_bench.a: $(ALL_INSTR_OBJS)
+	$(AR) $(ARFLAGS) $@ $^
 
 ## examples: builds examples
 examples: libxrpc.a
@@ -47,17 +61,36 @@ test: $(TEST_BINS)
 
 # builds the test
 test/%.o: test/%.c
-	$(CC) $(TEST_CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(TEST_EXTRA_CFLAGS) -c -o $@ $<
 
-# Test binary compilation
+# test binary compilation
 test/%: test/%.o libxrpc.a
-	$(CC) $(TEST_CFLAGS) $< -o $@ -L. -lxrpc
+	$(CC) $(CFLAGS) $(TEST_EXTRA_CFLAGS) $< -o $@ -L. -lxrpc
+
+## benchmark: builds the benchmark application
+benchmark: $(BENCH_BINS)
+
+# builds the benchmark 
+benchmark/%.o: benchmark/%.c
+	$(CC) $(CFLAGS) $(BENCH_EXTRA_CFLAGS) -c -o $@ $<
+
+# builds all the benchmark executables
+benchmark/%: benchmark/%.o libxrpc_bench.a
+	$(CC) $(CFLAGS) $(BENCH_EXTRA_CFLAGS) $< -o $@ -L. -lxrpc_bench
+
+# fallback to compile every C file
+%_bench.o: %.c 
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# fallback to compile every C file
+%.o: %.c 
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 ## clean: remove all artifacts
 clean:
-	rm -f $(ALL_OBJS) libxrpc.a examples/*/server $(TEST_BINS)
+	rm -f $(ALL_OBJS) $(TEST_BINS) $(ALL_INSTR_OBJS) libxrpc.a libxrpc_bench.a examples/*/server 
 
-.PHONY: examples clean help test
+.PHONY: examples clean help test benchmark
 
 ## help: prints this help message
 help:
