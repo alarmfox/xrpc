@@ -36,15 +36,13 @@ static void *report_handler(void *params) {
   int *args = (int *)params;
   int sleep_interval = *args;
   struct xrpc_benchmark_stats stats = {0};
-  int running = __atomic_load_n(&g_running, __ATOMIC_RELAXED);
-  while (running) {
+  while (__atomic_load_n(&g_running, __ATOMIC_RELAXED)) {
     xrpc_benchmark_stats_get(&stats);
     xrpc_benchmark_stats_print(&stats);
     sleep(sleep_interval);
-    running = __atomic_load_n(&g_running, __ATOMIC_RELAXED);
   }
 
-  printf("=== Final Benchmark Report === \n");
+  printf("\n=== Final Benchmark Report === \n");
   xrpc_benchmark_stats_get(&stats);
   xrpc_benchmark_stats_print(&stats);
   pthread_exit(0);
@@ -168,7 +166,7 @@ int main(int argc, char **argv) {
     goto exit;
   }
 
-  printf("Server started successfully!\n");
+  printf("\nServer started successfully!\n");
   printf("Available operations:\n");
   printf("  0x%02X - Echo (mirror input data)\n", OP_ECHO);
 
