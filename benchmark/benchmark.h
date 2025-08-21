@@ -10,7 +10,7 @@
  * is to record different metrics like:
  *
  * - memory allocations;
- * -  I/O system performance
+ * - I/O system performance
  * - transport system performance
  *
  * System performance (eg. Linux, CPU) will be evauluated using eBPF and perf
@@ -125,9 +125,13 @@ static inline uint64_t xrpc_benchmark_timestamp_ns(void) {
 #ifdef BENCHMARK
 
 #define XRPC_BENCH_COUNTER_INC(c)                                              \
-  __atomic_fetch_add(&g_xrpc_bench_stats.c, 1, __ATOMIC_RELAXED);
+  do {                                                                         \
+    __atomic_fetch_add(&g_xrpc_bench_stats.c, 1, __ATOMIC_RELAXED);            \
+  } while (0)
 #define XRPC_BENCH_COUNTER_SUB(c)                                              \
-  __atomic_fetch_sub(&g_xrpc_bench_stats.c, 1, __ATOMIC_RELAXED);
+  do {                                                                         \
+    __atomic_fetch_sub(&g_xrpc_bench_stats.c, 1, __ATOMIC_RELAXED);            \
+  } while (0)
 
 #define XRPC_BENCH_EV_RECORD(type, connid, reqid, data)                        \
   do {                                                                         \
@@ -161,10 +165,22 @@ static inline uint64_t xrpc_benchmark_timestamp_ns(void) {
   XRPC_BENCH_COUNTER_INC(total_requests);                                      \
   XRPC_BENCH_EV_RECORD(XRPC_BENCH_EV_REQ_START, connid, reqid, 0);
 
-#define XRPC_BENCH_REQ_CLOSE(connid, reqid)                                    \
-  XRPC_BENCH_COUNTER_INC(total_requests);                                      \
-  XRPC_BENCH_EV_RECORD(XRPC_BENCH_EV_REQ_START, connid, reqid, 0);
+#define XRPC_BENCH_REQ_CLOSE_SUCC(connid, reqid)                               \
+  do {                                                                         \
+    XRPC_BENCH_COUNTER_INC(total_requests);                                    \
+    XRPC_BENCH_COUNTER_INC(completed_requests);                                \
+    XRPC_BENCH_EV_RECORD(XRPC_BENCH_EV_REQ_END, connid, reqid, 0);             \
+  } while (0)
+
+#define XRPC_BENCH_REQ_CLOSE_ERR(connid, reqid)                                \
+  do {                                                                         \
+    XRPC_BENCH_COUNTER_INC(total_requests);                                    \
+    XRPC_BENCH_COUNTER_INC(failed_requests);                                   \
+    XRPC_BENCH_EV_RECORD(XRPC_BENCH_EV_REQ_END, connid, reqid, 0);             \
+  } while (0)
 
 #define XRPC_BENCH_IO_OP_TRACE(connid, reqid)                                  \
-  XRPC_BENCH_COUNTER_INC(total_io_operations);
+  do {                                                                         \
+    XRPC_BENCH_COUNTER_INC(total_io_operations);                               \
+  } while (0)
 #endif // !XRPC_BENCHMARK_H

@@ -357,6 +357,11 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
     ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
     break;
   case XRPC_REQ_STATE_COMPLETED:
+    if (op->status == XRPC_SUCCESS)
+      XRPC_BENCH_REQ_CLOSE_SUCC(op->conn->id, ctx->request_header->reqid);
+    else
+      XRPC_BENCH_REQ_CLOSE_ERR(op->conn->id, ctx->request_header->reqid);
+
     break;
   }
   }
