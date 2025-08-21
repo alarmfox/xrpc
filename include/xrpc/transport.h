@@ -152,20 +152,28 @@ static inline void connection_ref(struct xrpc_transport *t,
   (void)t;
   if (!c) return;
 
-  c->ref_count++;
+  __atomic_fetch_add(&c->ref_count, 1, __ATOMIC_RELAXED);
 }
 
 static inline void connection_unref(struct xrpc_transport *t,
                                     struct xrpc_connection *c) {
   if (!c || !t) return;
 
-  c->ref_count--;
+  int ref_count;
 
-  // if the ref_count <= 0 and the conn is closing close safely the underlying
-  // connection
-  if (c->ref_count <= 0 && c->is_closing) {
-    if (t->ops->close) t->ops->close(t, c);
-    c->is_closed = true;
+  ref_count = __atomic_load_n(&c->ref_count, __ATOMIC_SEQ_CST);
+
+  while (1) {
+    if (__atomic_compare_exchange_n(&c->ref_count, &ref_count, ref_count - 1,
+                                    true, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+
+      // if the ref_count <= 0 and the conn is closing close safely the
+      // underlying connection
+      if (ref_count == 0 && c->is_closing) {
+        if (t->ops->close) t->ops->close(t, c);
+        c->is_closed = true;
+      }
+    }
   }
 }
 
