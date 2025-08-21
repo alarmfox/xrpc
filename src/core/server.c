@@ -430,10 +430,13 @@ static void io_request_completed(struct xrpc_io_operation *op) {
     ctx->state = XRPC_REQ_STATE_WRITE;
     break;
   case XRPC_REQ_STATE_WRITE:
+    if (op->buf) {
+      free(op->buf);
+      op->buf = NULL;
+    }
     ctx->state = XRPC_REQ_STATE_COMPLETED;
     break;
   case XRPC_REQ_STATE_COMPLETED:
-    if (op->buf) free(op->buf);
     break;
   }
 
