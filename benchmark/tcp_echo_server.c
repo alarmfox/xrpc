@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
 
   int report_interval = 2;
   int port = 9000;
-  uint32_t address = INADDR_LOOPBACK;
+  struct sockaddr_in addr;
 
   int opt;
   while ((opt = getopt(argc, argv, "p:a:tr:j:h")) != -1) {
@@ -123,11 +123,7 @@ int main(int argc, char **argv) {
       port = (uint16_t)atoi(optarg);
       break;
     case 'a':
-      if (strcmp(optarg, "0.0.0.0") == 0) {
-        address = INADDR_ANY;
-      } else {
-        address = INADDR_LOOPBACK; // For simplicity, could parse properly
-      }
+      inet_aton(optarg, &addr.sin_addr);
       break;
     case 'r':
       report_interval = atoi(optarg);
@@ -147,10 +143,11 @@ int main(int argc, char **argv) {
                                         .max_concurrent_operations = 128};
 
   struct xrpc_transport_config tcfg =
-      XRPC_TCP_SERVER_DEFAULT_CONFIG(address, port);
+      XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, port);
 
   struct xrpc_server_config cfg = {.tcfg = &tcfg, .iocfg = &iocfg};
 
+  tcfg.config.tcp.addr = addr;
   // Optimize for benchmarking
   tcfg.config.tcp.nonblocking = false;
   tcfg.config.tcp.accept_timeout_ms = 100;     // Allow periodic reports
