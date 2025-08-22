@@ -61,8 +61,9 @@ xrpc_tcp_configure_socket(int fd, const struct xrpc_transport_tcp_config *c) {
 
     XRPC_DEBUG_PRINT("SO_REUSEADDR enabled");
   }
-
   if (c->reuseport) {
+#ifdef SO_REUSEPORT
+
     opt = 1;
     if (ret = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(int)),
         ret < 0)
@@ -70,6 +71,9 @@ xrpc_tcp_configure_socket(int fd, const struct xrpc_transport_tcp_config *c) {
                                         XRPC_TRANSPORT_ERR_SOCKET);
 
     XRPC_DEBUG_PRINT("SO_REUSEPORT enabled");
+#else
+    XRPC_DEBUG_PRINT("SO_REUSEPORT is not supported by the host system");
+#endif /* ifdef SO_REUSEPORT */
   }
 
   if (c->keepalive) {
