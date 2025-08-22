@@ -322,6 +322,7 @@ xrpc_client_tcp_connect(struct xrpc_client_connection **conn,
 
   _conn->ops = &xrpc_client_connection_tcp_ops;
   _conn->data = data;
+  _conn->is_connected = true;
 
   *conn = _conn;
 
@@ -343,14 +344,19 @@ error_cleanup:
  */
 static void xrpc_client_tcp_disconnect(struct xrpc_client_connection *conn) {
   if (!conn) return;
-  struct xrpc_client_connection_data *data = conn->data;
 
-  if (data && data->fd > 0) {
+  struct xrpc_client_connection_data *data =
+      (struct xrpc_client_connection_data *)conn->data;
+
+  if (data && data->fd >= 0) {
+    XRPC_DEBUG_PRINT("closing TCP client connection (fd=%d)", data->fd);
     close(data->fd);
     data->fd = -1;
-    free(data);
-    data = NULL;
   }
+
+  conn->is_connected = false;
+
+  // Free the entire connection (data is part of the same allocation)
   free(conn);
 }
 
@@ -371,12 +377,34 @@ static void xrpc_client_tcp_disconnect(struct xrpc_client_connection *conn) {
 int xrpc_client_tcp_send(struct xrpc_client_connection *conn, const void *buf,
                          size_t len, size_t *bytes_written) {
 
+  if (!conn || !buf || !bytes_written || len == 0)
+    return XRPC_CLIENT_ERR_INVALID_CONFIG;
+
   ssize_t n;
   struct xrpc_client_connection_data *data = conn->data;
+  if (!data || !conn->is_connected || data->fd < 0) {
+    return XRPC_CLIENT_ERR_NOT_CONNECTED;
+  }
 
   n = write(data->fd, buf, len);
-  if (n <= 0)
-    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
+  if (n < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      *bytes_written = 0;
+      return XRPC_TRANSPORT_ERR_WOULD_BLOCK;
+    } else if (errno == EPIPE || errno == ECONNRESET) {
+      conn->is_connected = false;
+      return XRPC_TRANSPORT_ERR_CONN_CLOSED;
+    } else {
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
+    }
+  }
+  XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
+
+  if (n == 0) {
+    // This shouldn't happen with write(), but handle gracefully
+    conn->is_connected = false;
+    return XRPC_TRANSPORT_ERR_CONN_CLOSED;
+  }
 
   *bytes_written = n;
 
@@ -400,20 +428,37 @@ int xrpc_client_tcp_send(struct xrpc_client_connection *conn, const void *buf,
 int xrpc_client_tcp_recv(struct xrpc_client_connection *conn, void *buf,
                          size_t len, size_t *bytes_read) {
 
-  ssize_t n;
-  struct xrpc_client_connection_data *data = conn->data;
-
-  n = read(data->fd, buf, len);
-
-  if (n == 0) return XRPC_TRANSPORT_ERR_CONN_CLOSED;
-  if (n < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK)
-      return XRPC_TRANSPORT_ERR_WOULD_BLOCK;
-    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("read", XRPC_TRANSPORT_ERR_READ);
+  if (!conn || !buf || !bytes_read || len == 0) {
+    return XRPC_CLIENT_ERR_INVALID_CONFIG;
   }
 
-  *bytes_read = n;
+  struct xrpc_client_connection_data *data =
+      (struct xrpc_client_connection_data *)conn->data;
 
+  if (!data || !conn->is_connected || data->fd < 0) {
+    return XRPC_CLIENT_ERR_NOT_CONNECTED;
+  }
+
+  ssize_t n = read(data->fd, buf, len);
+
+  if (n == 0) {
+    conn->is_connected = false;
+    return XRPC_TRANSPORT_ERR_CONN_CLOSED;
+  }
+
+  if (n < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      *bytes_read = 0;
+      return XRPC_TRANSPORT_ERR_WOULD_BLOCK;
+    } else if (errno == ECONNRESET) {
+      conn->is_connected = false;
+      return XRPC_TRANSPORT_ERR_CONN_CLOSED;
+    } else {
+      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("read", XRPC_TRANSPORT_ERR_READ);
+    }
+  }
+
+  *bytes_read = (size_t)n;
   return XRPC_SUCCESS;
 }
 

@@ -272,6 +272,7 @@ struct xrpc_client_connection_ops {
 
 struct xrpc_client_connection {
   const struct xrpc_client_connection_ops *ops;
+  bool is_connected;
   void *data; // transport-specific data
 };
 
