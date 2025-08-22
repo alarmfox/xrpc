@@ -6,7 +6,7 @@
 #define XRPC_DEBUG_PRINT(fmt, ...)                                             \
   do {                                                                         \
     fprintf(stderr, "[XRPC-DEBUG] " fmt "\n", ##__VA_ARGS__);                  \
-  } while (0);
+  } while (0)
 #else
 #define XRPC_DEBUG_PRINT(fmt, ...)                                             \
   do {                                                                         \
