@@ -1,5 +1,10 @@
 # Programs 
 CC      = gcc
+AR      = ar
+
+# =========================
+#  Compilation Flags
+# =========================
 ARFLAGS = rcs
 
 CFLAGS  = -std=c11 -Wall -Wextra -Werror
