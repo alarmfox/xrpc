@@ -1,10 +1,9 @@
-CC = gcc
-AR = ar
-
+# Programs 
+CC      = gcc
 ARFLAGS = rcs
 
 CFLAGS = -std=c99 -Wall -Wextra -Werror
-CFLAGS += -Iinclude/ -Ibenchmark/ -D_POSIX_C_SOURCE=199309L
+CFLAGS += -Iinclude/ -Ibenchmark/
 
 ifeq ($(DEBUG),1)
 CFLAGS += -O0 -g3 -DDEBUG
@@ -13,7 +12,8 @@ CFLAGS += -O2
 endif
 
 # Testing / Benchmark flags
-TEST_CFLAGS  := $(CFLAGS) -Itest/
+TEST_CFLAGS  := -Itest
+BENCH_CFLAGS := -D_POSIX_C_SOURCE=199309L -DBENCHMARK
 
 # =========================
 #  Sources & Objects
@@ -46,17 +46,12 @@ all: libxrpc.a examples
 libxrpc.a: $(ALL_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
-## libxrpc_bench.a: builds the instrumented benchmark library
-libxrpc_bench.a: CFLAGS += -DBENCHMARK
-libxrpc_bench.a: $(ALL_INSTR_OBJS) $(BENCH_HELPER_OBJ)
-	$(AR) $(ARFLAGS) $@ $^
-
 ## examples: builds example applications
-examples: libxrpc.a
-	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server -L. -lxrpc
+examples: $(ALL_OBJS)
+	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server $^
 
 ## benchmark: builds the benchmark application
-benchmark: $(BENCH_BINS) $(BENCH_HELPER_OBJ) libxrpc_bench.a
+benchmark: $(BENCH_BINS) $(BENCH_HELPER_OBJ) $(ALL_INSTR_OBJS)
 
 ## test: builds and runs all tests
 test: $(TEST_BINS)
@@ -70,29 +65,29 @@ test: $(TEST_BINS)
 #  Pattern Rules
 # =========================
 test/%.o: test/%.c
-	$(CC) $(TEST_CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
 
-test/%: test/%.o libxrpc.a
-	$(CC) $(TEST_CFLAGS) $< -o $@ -L. -lxrpc
+test/%: test/%.o $(ALL_OBJS)
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
 
-benchmark/benchmark.o: benchmark/benchmark.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+$(BENCH_BINS): %: %.o $(BENCH_HELPER_OBJ) $(ALL_INSTR_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
 
 benchmark/%.o: benchmark/%.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(BENCH_CFLAGS) -c -o $@ $<
 
-benchmark/%: benchmark/%.o libxrpc_bench.a
-	$(CC) $(CFLAGS) $< -o $@ -L. -lxrpc_bench -lpthread
+benchmark/benchmark.o: benchmark/benchmark.c
+	$(CC) $(CFLAGS) $(BENCH_CFLAGS) -c -o $@ $<
 
 %_bench.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(BENCH_CFLAGS) -c -o $@ $<
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 ## clean: remove all build artifacts
 clean:
-	$(RM) $(ALL_OBJS) $(ALL_INSTR_OBJS) $(TEST_BINS) $(BENCH_OBJS) $(BENCH_BINS) $(BENCH_HELPER_OBJ) libxrpc.a libxrpc_bench.a examples/*/server
+	$(RM) $(ALL_OBJS) $(ALL_INSTR_OBJS) $(TEST_BINS) $(TEST_OBJS) $(BENCH_OBJS) $(BENCH_BINS) $(BENCH_HELPER_OBJ) libxrpc.a examples/*/server
 
 ## help: prints this help message
 help:
