@@ -3,7 +3,7 @@ AR = ar
 
 ARFLAGS = rcs
 
-CFLAGS = -std=c99 -Wall -Wextra
+CFLAGS = -std=c99 -Wall -Wextra -Werror
 CFLAGS += -Iinclude/ -Ibenchmark/ -D_POSIX_C_SOURCE=199309L
 
 ifeq ($(DEBUG),1)
@@ -18,10 +18,7 @@ TEST_CFLAGS  := $(CFLAGS) -Itest/
 # =========================
 #  Sources & Objects
 # =========================
-CORE_SRCS       := $(wildcard src/core/*.c)
-TRANSPORT_SRCS  := $(wildcard src/transports/*.c)
-IO_SYSTEM_SRCS  := $(wildcard src/io/*.c)
-ALL_SRCS        := $(CORE_SRCS) $(TRANSPORT_SRCS) $(IO_SYSTEM_SRCS)
+ALL_SRCS        := $(wildcard src/**/*.c)
 
 ALL_OBJS        := $(ALL_SRCS:.c=.o)
 ALL_INSTR_OBJS  := $(ALL_SRCS:.c=_bench.o)
@@ -95,11 +92,7 @@ benchmark/%: benchmark/%.o libxrpc_bench.a
 
 ## clean: remove all build artifacts
 clean:
-	$(RM) $(ALL_OBJS) $(ALL_INSTR_OBJS) \
-	      $(TEST_OBJS) $(TEST_BINS) \
-	      $(BENCH_OBJS) $(BENCH_BINS) $(BENCH_HELPER_OBJ) \
-	      libxrpc.a libxrpc_bench.a \
-	      examples/*/server
+	$(RM) $(ALL_OBJS) $(ALL_INSTR_OBJS) $(TEST_BINS) $(BENCH_OBJS) $(BENCH_BINS) $(BENCH_HELPER_OBJ) libxrpc.a libxrpc_bench.a examples/*/server
 
 ## help: prints this help message
 help:
