@@ -43,7 +43,7 @@ BENCH_BINS       := $(BENCH_PROG_SRCS:.c=)
 # =========================
 .PHONY: all clean help examples test benchmark
 
-all: libxrpc.a test examples
+all: libxrpc.a examples
 
 ## libxrpc.a: builds the library
 libxrpc.a: $(ALL_OBJS)
