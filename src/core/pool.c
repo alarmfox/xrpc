@@ -7,6 +7,16 @@
 #include "xrpc/error.h"
 #include "xrpc/pool.h"
 
+#if defined(__APPLE__) || (_POSIX_C_SOURCE >= 200112L && !defined(__GLIBC__))
+void *xrpc_aligned_alloc(size_t alignment, size_t size) {
+  void *ptr = NULL;
+  if (posix_memalign(&ptr, alignment, size) != 0) return NULL;
+  return ptr;
+}
+#else
+#define xrpc_aligned_alloc(alignment, size) aligned_alloc(alignment, size)
+#endif
+
 /*
  * @brief Create a new pool.
  *
@@ -33,7 +43,7 @@ int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
 
   _p->elem_size = align_size(CACHE_LINE_SIZE, elem_size);
   _p->capacity = max_len;
-  _p->items = aligned_alloc(CACHE_LINE_SIZE, _p->elem_size * max_len);
+  _p->items = xrpc_aligned_alloc(CACHE_LINE_SIZE, _p->elem_size * max_len);
 
   if (!_p->items) return XRPC_INTERNAL_ERR_ALLOC;
 
