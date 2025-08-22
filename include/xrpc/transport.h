@@ -137,9 +137,7 @@ extern const struct xrpc_transport_ops xrpc_transport_tcp_ops;
  */
 
 static inline bool connection_is_valid(struct xrpc_connection *c) {
-  if (!c) return false;
-  if (c->is_closed || c->is_closing) return false;
-  return true;
+  return c && !c->is_closed && !c->is_closing;
 }
 
 static inline void connection_mark_for_close(struct xrpc_connection *c) {
