@@ -108,8 +108,12 @@ void xrpc_benchmark_stats_get(struct xrpc_benchmark_stats *s);
  */
 
 void xrpc_benchmark_stats_print(const struct xrpc_benchmark_stats *s);
+
+#ifdef BENCHMARK
 /*
  * @brief Get current high-resolution timestamp in nanoseconds
+ * This requires -D_POSIX_C_SOURCE=199309L because of CLOCK_MONOTONIC.
+ * So we define a dummy handler if BENCHMARK is not defined.
  *
  * @return Timestamp in nanoseconds
  */
@@ -118,6 +122,10 @@ static inline uint64_t xrpc_benchmark_timestamp_ns(void) {
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
+
+#else
+static inline uint64_t xrpc_benchmark_timestamp_ns(void) { return 0; }
+#endif //  BENCHMARK
 
 /*
  * Function implementation based on the -DBENCHMARK.
