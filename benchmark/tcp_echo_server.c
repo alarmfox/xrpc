@@ -117,9 +117,13 @@ static void print_config(const struct xrpc_server_config *cfg) {
 
 int main(int argc, char **argv) {
 
+  // Set up signal handling for clean shutdown
+  signal(SIGINT, signal_handler);
+  signal(SIGTERM, signal_handler);
+
   int report_interval = 2;
   int port = 9000;
-  struct sockaddr_in addr;
+  struct sockaddr_in addr = {.sin_addr = {.s_addr = INADDR_LOOPBACK}};
 
   int opt;
   while ((opt = getopt(argc, argv, "p:a:tr:j:h")) != -1) {
@@ -141,18 +145,15 @@ int main(int argc, char **argv) {
       return 1;
     }
   }
-  // Set up signal handling for clean shutdown
-  signal(SIGINT, signal_handler);
-  signal(SIGTERM, signal_handler);
   struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING,
                                         .max_concurrent_operations = 128};
 
   struct xrpc_transport_config tcfg =
-      XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, port);
+      XRPC_TCP_SERVER_DEFAULT_CONFIG(addr.sin_addr.s_addr, port);
 
   struct xrpc_server_config cfg = {.tcfg = &tcfg, .iocfg = &iocfg};
+  struct xrpc_benchmark_stats stats = {0};
 
-  tcfg.config.tcp.addr = addr;
   // Optimize for benchmarking
   tcfg.config.tcp.nonblocking = false;
   tcfg.config.tcp.accept_timeout_ms = 100;     // Allow periodic reports
@@ -198,6 +199,11 @@ exit:
     xrpc_server_free(srv);
     srv = NULL;
   }
+
+  print_config(&cfg);
+  xrpc_benchmark_stats_get(&stats);
+  xrpc_benchmark_stats_print(&stats);
+
   xrpc_benchmark_stats_free();
 
   printf("Server shutdown complete\n");
