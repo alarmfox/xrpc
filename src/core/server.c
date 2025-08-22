@@ -390,8 +390,7 @@ static void io_request_completed(struct xrpc_io_operation *op) {
    * If there are errors, mark the connection for close, free
    * resources and skips to request completed which will trigger the cleanup
    */
-  if (op->status != XRPC_SUCCESS &&
-      op->status != XRPC_TRANSPORT_ERR_WOULD_BLOCK) {
+  if (op->status != XRPC_SUCCESS) {
 
     if (op->status == XRPC_TRANSPORT_ERR_CONN_CLOSED)
       connection_mark_for_close(ctx->conn);

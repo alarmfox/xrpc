@@ -234,6 +234,23 @@ enum xrpc_client_state {
  */
 struct xrpc_client_connection_tcp_config {
   struct sockaddr_in addr;
+
+  // TCP-specific options
+  bool nodelay;           // TCP_NODELAY (disable Nagle)
+  bool keepalive;         // SO_KEEPALIVE
+  int keepalive_idle;     // TCP_KEEPIDLE (seconds)
+  int keepalive_interval; // TCP_KEEPINTVL (seconds)
+  int keepalive_probes;   // TCP_KEEPCNT
+  int send_timeout_ms;    // SO_SNDTIMEO
+  int recv_timeout_ms;    // SO_RCVTIMEO
+  int connect_timeout_ms;
+
+  // Buffer size
+  int send_buffer_size; // SO_SNDBUF
+  int recv_buffer_size; // SO_RCVBUF
+
+  // Non blocking mode
+  bool nonblocking; // Set O_NONBLOCK
 };
 
 struct xrpc_client_connection_config {
