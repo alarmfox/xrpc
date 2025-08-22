@@ -30,7 +30,7 @@ static int xrpc_io_blocking_init(struct xrpc_io_system **xio,
   return XRPC_SUCCESS;
 }
 
-static int xprc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
+static int xrpc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
                                                struct xrpc_io_operation *op) {
 
   (void)xio;
@@ -79,7 +79,7 @@ static void xrpc_io_blocking_free(struct xrpc_io_system *xio) {
 
 const struct xrpc_io_system_ops xrpc_blocking_ops = {
     .init = xrpc_io_blocking_init,
-    .schedule_operation = xprc_io_blocking_schedule_operation,
+    .schedule_operation = xrpc_io_blocking_schedule_operation,
     .poll = xrpc_io_blocking_poll,
     .free = xrpc_io_blocking_free,
 };
