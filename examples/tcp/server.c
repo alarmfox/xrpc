@@ -14,11 +14,14 @@
 
 static struct xrpc_server *srv = NULL;
 
-#define PRINT_STR_OPT_OR_DISABLED(opt, buf, v)                                 \
+#define PRINT_OPT_OR_DISABLED(opt, buf, v, unit)                               \
   do {                                                                         \
     strncpy(buf, "disabled", 8 + 1);                                           \
-    if (v > 0) sprintf(buf, "%d", v);                                          \
-    printf("  " opt " %s\n", buf);                                             \
+    if (v > 0) {                                                               \
+      sprintf(buf, "%d", v);                                                   \
+      printf("  " opt " %s %s\n", buf, unit);                                  \
+    } else                                                                     \
+      printf("  " opt " %s\n", buf);                                           \
   } while (0)
 
 // Signal handler for clean shutdown
@@ -105,7 +108,7 @@ static void print_config(const struct xrpc_server_config *cfg) {
   char buf[64];
 
   printf("\n========================================\n");
-  printf(" XRPC TCP Server Benchmark Configuration ");
+  printf(" XRPC TCP Server Configuration ");
   printf("\n========================================\n");
 
   printf("  TCP_NODELAY            : %s\n",
@@ -119,23 +122,25 @@ static void print_config(const struct xrpc_server_config *cfg) {
   printf("  O_NONBLOCK             : %s\n",
          c->nonblocking ? "enabled" : "disabled");
 
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPIDLE           :", buf, c->keepalive_idle);
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPINTVL          :", buf,
-                            c->keepalive_interval);
-  PRINT_STR_OPT_OR_DISABLED("TCP_KEEPCNT            :", buf,
-                            c->keepalive_probes);
-  PRINT_STR_OPT_OR_DISABLED("SO_SNDTIMEO            :", buf,
-                            c->send_timeout_ms);
-  PRINT_STR_OPT_OR_DISABLED("SO_RCVTIMEO            :", buf,
-                            c->recv_timeout_ms);
-  PRINT_STR_OPT_OR_DISABLED("SO_RCVBUF              :", buf,
-                            c->recv_buffer_size);
-  PRINT_STR_OPT_OR_DISABLED("SO_SNDBUF              :", buf,
-                            c->send_buffer_size);
+  PRINT_OPT_OR_DISABLED("TCP_KEEPIDLE           :", buf, c->keepalive_idle,
+                        "s");
+  PRINT_OPT_OR_DISABLED("TCP_KEEPINTVL          :", buf, c->keepalive_interval,
+                        "s");
+  PRINT_OPT_OR_DISABLED("TCP_KEEPCNT            :", buf, c->keepalive_probes,
+                        "");
+  PRINT_OPT_OR_DISABLED("SO_SNDTIMEO            :", buf, c->send_timeout_ms,
+                        "ms");
+  PRINT_OPT_OR_DISABLED("SO_RCVTIMEO            :", buf, c->recv_timeout_ms,
+                        "ms");
+  PRINT_OPT_OR_DISABLED("SO_RCVBUF              :", buf, c->recv_buffer_size,
+                        "bytes");
+  PRINT_OPT_OR_DISABLED("SO_SNDBUF              :", buf, c->send_buffer_size,
+                        "bytes");
 
   printf("  Connections pool size  : %d\n", c->connection_pool_size);
   printf("  Requests pool size     : %lu\n", cfg->max_concurrent_requests);
-  printf("  Max concurrent I/O ops : %lu\n", cfg->max_concurrent_requests);
+  printf("  Max concurrent I/O ops : %lu\n",
+         cfg->iocfg->max_concurrent_operations);
 
   printf("========================================\n\n");
 }
@@ -150,6 +155,7 @@ int main(void) {
 
   tcfg.config.tcp.nonblocking = false;
   tcfg.config.tcp.accept_timeout_ms = 100;
+  tcfg.config.tcp.recv_timeout_ms = 100;
   tcfg.config.tcp.connection_pool_size = 1024;
 
   // Set up signal handling for clean shutdown
