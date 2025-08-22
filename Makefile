@@ -2,7 +2,7 @@
 CC      = gcc
 ARFLAGS = rcs
 
-CFLAGS  = -std=c99 -Wall -Wextra -Werror
+CFLAGS  = -std=c11 -Wall -Wextra -Werror
 CFLAGS += -Iinclude/ -Ibenchmark/
 
 ifeq ($(DEBUG),1)
