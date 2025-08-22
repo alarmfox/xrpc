@@ -18,7 +18,8 @@ struct xrpc_request_context {
   enum state {
     XRPC_REQ_STATE_READ_HEADER,
     XRPC_REQ_STATE_READ_BODY,
-    XRPC_REQ_STATE_WRITE,
+    XRPC_REQ_STATE_WRITE_HEADER,
+    XRPC_REQ_STATE_WRITE_BODY,
     XRPC_REQ_STATE_PROCESS,
     XRPC_REQ_STATE_COMPLETED,
   } state;
@@ -188,7 +189,8 @@ int xrpc_server_run(struct xrpc_server *srv) {
       // if the underlying connection is no longer valid. Put the request for
       // completion and free the resource completed body reading, we are ready
       if (!connection_is_valid(ctx->conn) ||
-          ctx->state == XRPC_REQ_STATE_COMPLETED) {
+          ctx->state == XRPC_REQ_STATE_COMPLETED ||
+          ctx->last_error != XRPC_SUCCESS) {
         free_request_context(srv, ctx);
         ctx = NULL;
         continue;
@@ -197,7 +199,7 @@ int xrpc_server_run(struct xrpc_server *srv) {
       // we add a worker thread.
       if (ctx->state == XRPC_REQ_STATE_PROCESS) {
         process(ctx);
-        ctx->state = XRPC_REQ_STATE_WRITE;
+        ctx->state = XRPC_REQ_STATE_WRITE_HEADER;
 
         /*
          * Start to read another request.
@@ -285,13 +287,20 @@ static void free_request_context(struct xrpc_server *srv,
                         sizeof(struct xrpc_request_header) +
                         sizeof(struct xrpc_response_header) + MAX_REQUEST_SIZE;
 
-  if (ctx->response_data) free(ctx->response_data);
+  if (ctx->state == XRPC_REQ_STATE_WRITE_BODY && ctx->response_data) {
+    free(ctx->response_data);
+  }
+
+  if (ctx->last_error == XRPC_SUCCESS ||
+      ctx->last_error == XRPC_TRANSPORT_ERR_CONN_CLOSED)
+    XRPC_BENCH_REQ_CLOSE_SUCC(ctx->conn->id, ctx->request_header->reqid);
+  else
+    XRPC_BENCH_REQ_CLOSE_ERR(ctx->conn->id, ctx->request_header->reqid);
 
   if (ctx->conn) connection_unref(ctx->srv->transport, ctx->conn);
 
-  memset(ctx, 0, context_size);
-
   assert(xrpc_pool_put(srv->request_context_pool, ctx) == XRPC_SUCCESS);
+  memset(ctx, 0, context_size);
 }
 
 // Schedule an I/O operation based on the current request state
@@ -340,68 +349,53 @@ static void advance_request_state_machine(struct xrpc_request_context *ctx) {
   case XRPC_REQ_STATE_PROCESS:
     break;
 
-  case XRPC_REQ_STATE_WRITE: {
-
-    // Create single buffer for header + data
-    size_t total_len =
-        sizeof(struct xrpc_response_header) + ctx->response_header->sz;
-    uint8_t *write_buffer = malloc(total_len);
-
+    // Write the header
+  case XRPC_REQ_STATE_WRITE_HEADER:
     op->type = XRPC_IO_WRITE;
-
-    if (!write_buffer) {
-      ctx->response_header->status = XRPC_RESPONSE_INTERNAL_ERROR;
-      ctx->response_header->sz = 0;
-      op->len = sizeof(struct xrpc_response_header);
-      op->buf = ctx->response_header;
-    } else {
-      // Copy header first
-      memcpy(write_buffer, ctx->response_header,
-             sizeof(struct xrpc_response_header));
-
-      // Copy data if any
-      if (ctx->response_header->sz > 0 && ctx->response_data) {
-        memcpy(write_buffer + sizeof(struct xrpc_response_header),
-               ctx->response_data, ctx->response_header->sz);
-      }
-      // Schedule single write operation
-      op->type = XRPC_IO_WRITE;
-      op->conn = ctx->conn;
-      op->len = total_len;
-      op->buf = write_buffer;
-    }
+    op->len = sizeof(struct xrpc_response_header);
+    op->buf = ctx->response_header;
+    ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
+    break;
+  case XRPC_REQ_STATE_WRITE_BODY:
+    op->type = XRPC_IO_WRITE;
+    op->len = ctx->response_header->sz;
+    op->buf = ctx->response_data;
     ctx->srv->io->ops->schedule_operation(ctx->srv->io, op);
     break;
   case XRPC_REQ_STATE_COMPLETED:
-    if (op->status == XRPC_SUCCESS)
-      XRPC_BENCH_REQ_CLOSE_SUCC(op->conn->id, ctx->request_header->reqid);
-    else
-      XRPC_BENCH_REQ_CLOSE_ERR(op->conn->id, ctx->request_header->reqid);
 
     break;
   }
-  }
 }
 static void io_request_completed(struct xrpc_io_operation *op) {
+  if (!op) return;
+
   struct xrpc_request_context *ctx = (struct xrpc_request_context *)op->ctx;
+
+  /*
+   * Handle partial operations. For now just reschedule
+   */
+
+  if (op->status == XRPC_TRANSPORT_WOULD_BLOCK &&
+      op->transferred_bytes < op->len) {
+
+    xrpc_ringbuf_push(ctx->srv->active_contexts, ctx);
+    return;
+  }
+
   /*
    * If transport there are errors, mark the connection for close, free
    * resources and skips to request completed which will trigger the cleanup
    */
-  if (op->status == XRPC_TRANSPORT_ERR_CONN_CLOSED ||
-      op->status == XRPC_TRANSPORT_ERR_READ ||
-      op->status == XRPC_TRANSPORT_ERR_WRITE) {
+  if (op->status != XRPC_SUCCESS && op->status != XRPC_TRANSPORT_WOULD_BLOCK) {
 
-    if (op->status != XRPC_TRANSPORT_ERR_CONN_CLOSED)
+    if (op->status == XRPC_TRANSPORT_ERR_CONN_CLOSED)
+      connection_mark_for_close(ctx->conn);
+    else
       XRPC_DEBUG_PRINT("Transport error: %d", op->status);
-
-    /* Clean up write buffer if needed */
-    if (op->buf && ctx->state == XRPC_REQ_STATE_WRITE) free(op->buf);
-    op->buf = NULL;
 
     ctx->state = XRPC_REQ_STATE_COMPLETED;
     ctx->last_error = op->status;
-    connection_mark_for_close(ctx->conn);
 
     assert(xrpc_io_operation_free(ctx->srv->io, op) == XRPC_SUCCESS);
     op = NULL;
@@ -411,6 +405,7 @@ static void io_request_completed(struct xrpc_io_operation *op) {
     return;
   }
 
+  // the operation has completed. Go to the next phase of the state machine
   switch (ctx->state) {
     // on header complete schedule body read if any otherwise process the
     // request.
@@ -420,7 +415,7 @@ static void io_request_completed(struct xrpc_io_operation *op) {
     ctx->response_header->op = ctx->request_header->op;
     // prevent a DoS. A malicious client could make a very big request
     if (ctx->request_header->sz > MAX_REQUEST_SIZE) {
-      ctx->state = XRPC_REQ_STATE_WRITE;
+      ctx->state = XRPC_REQ_STATE_WRITE_HEADER;
       ctx->response_header->status = XRPC_API_ERR_INVALID_ARGS;
       ctx->response_header->sz = 0;
     } else if (ctx->request_header->sz == 0)
@@ -439,19 +434,20 @@ static void io_request_completed(struct xrpc_io_operation *op) {
     } else {
       ctx->response_header->status = XRPC_RESPONSE_UNSUPPORTED_HANDLER;
       ctx->response_header->sz = 0;
-      ctx->state = XRPC_REQ_STATE_WRITE;
+      ctx->state = XRPC_REQ_STATE_WRITE_HEADER;
     }
     break;
   case XRPC_REQ_STATE_PROCESS:
-    ctx->state = XRPC_REQ_STATE_WRITE;
+    ctx->state = XRPC_REQ_STATE_WRITE_HEADER;
     break;
-  case XRPC_REQ_STATE_WRITE:
-    if (op->buf) {
-      free(op->buf);
-      op->buf = NULL;
-    }
+  case XRPC_REQ_STATE_WRITE_HEADER:
+    if (ctx->response_header->sz > 0)
+      ctx->state = XRPC_REQ_STATE_WRITE_BODY;
+    else
+      ctx->state = XRPC_REQ_STATE_COMPLETED;
+    break;
+  case XRPC_REQ_STATE_WRITE_BODY:
     ctx->state = XRPC_REQ_STATE_COMPLETED;
-    break;
   case XRPC_REQ_STATE_COMPLETED:
     break;
   }

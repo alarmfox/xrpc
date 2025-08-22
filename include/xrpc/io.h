@@ -24,6 +24,7 @@ struct xrpc_io_operation {
   struct xrpc_connection *conn;
   void *buf;
   size_t len;
+  size_t transferred_bytes;
 
   void (*on_complete)(struct xrpc_io_operation *op);
   int status;

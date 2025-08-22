@@ -35,23 +35,23 @@ static int xrpc_io_blocking_schedule_operation(struct xrpc_io_system *xio,
 
   (void)xio;
   int ret = XRPC_SUCCESS;
-  size_t transferred_bytes = 0, n = 0;
+  size_t n = 0;
 
   switch (op->type) {
   case XRPC_IO_READ:
-    while (transferred_bytes < op->len) {
-      ret = op->conn->ops->recv(op->conn, op->buf + transferred_bytes,
-                                op->len - transferred_bytes, &n);
+    while (op->transferred_bytes < op->len) {
+      ret = op->conn->ops->recv(op->conn, op->buf + op->transferred_bytes,
+                                op->len - op->transferred_bytes, &n);
       if (ret != XRPC_SUCCESS) break;
-      transferred_bytes += n;
+      op->transferred_bytes += n;
     }
     break;
   case XRPC_IO_WRITE: {
-    while (transferred_bytes < op->len) {
-      ret = op->conn->ops->send(op->conn, op->buf + transferred_bytes,
-                                op->len - transferred_bytes, &n);
+    while (op->transferred_bytes < op->len) {
+      ret = op->conn->ops->send(op->conn, op->buf + op->transferred_bytes,
+                                op->len - op->transferred_bytes, &n);
       if (ret != XRPC_SUCCESS) break;
-      transferred_bytes += n;
+      op->transferred_bytes += n;
     }
     break;
   }
