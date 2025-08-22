@@ -342,11 +342,26 @@ void xrpc_client_free(struct xrpc_client *cli);
     }                                                                          \
   }
 
-#define XRPC_UNIX_SERVER_DEFAULT_CONFIG(path_)                                 \
+#define XRPC_TCP_CLIENT_DEFAULT_CONFIG(addr_, port_)                           \
   {                                                                            \
-    .type = XRPC_TRANSPORT_UNIX,                                               \
-    .config.unix = {                                                           \
-        .addr = {.sun_family = AF_UNIX, .sun_path = path_},                    \
-    },                                                                         \
+    .type = XRPC_TRANSPORT_TCP, .config.tcp = {                                \
+      .addr =                                                                  \
+          {                                                                    \
+              .sin_family = AF_INET,                                           \
+              .sin_port = htons(port_),                                        \
+              .sin_addr.s_addr = htonl(addr_),                                 \
+          },                                                                   \
+      .nodelay = true,                                                         \
+      .keepalive = true,                                                       \
+      .keepalive_idle = 60,                                                    \
+      .keepalive_interval = 5,                                                 \
+      .keepalive_probes = 3,                                                   \
+      .send_timeout_ms = -1,                                                   \
+      .recv_timeout_ms = -1,                                                   \
+      .send_buffer_size = -1,                                                  \
+      .recv_buffer_size = -1,                                                  \
+      .nonblocking = true,                                                     \
+      .connect_timeout_ms = 0,                                                 \
+    }                                                                          \
   }
 #endif // XRPC_H
