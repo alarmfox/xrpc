@@ -17,7 +17,7 @@ CFLAGS += -O2
 endif
 
 # Testing / Benchmark flags
-TEST_CFLAGS  := -Itest
+TEST_CFLAGS  := -Itest/
 BENCH_CFLAGS := -D_POSIX_C_SOURCE=199309L -DBENCHMARK
 
 # =========================
