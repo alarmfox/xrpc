@@ -196,7 +196,7 @@ static inline void connection_unref(struct xrpc_transport *t,
           if (__atomic_compare_exchange_n(&c->is_closed, &expected_closed, true,
                                           true, __ATOMIC_RELEASE,
                                           __ATOMIC_RELAXED)) {
-            if (t->ops->close) { t->ops->close(t, c); }
+            if (t && t->ops && t->ops->close) t->ops->close(t, c);
           }
         }
       }
