@@ -39,7 +39,7 @@ static int
 xrpc_tcp_configure_socket(int fd, const struct xrpc_transport_tcp_config *c) {
 
   int ret, opt;
-  struct timeval timeout;
+  struct timeval timeout = {0};
 
   // set nodelay
   if (c->nodelay) {
@@ -109,6 +109,7 @@ xrpc_tcp_configure_socket(int fd, const struct xrpc_transport_tcp_config *c) {
   }
 
   if (c->send_timeout_ms > 0) {
+    memset(&timeout, 0, sizeof(struct timeval));
     timeout.tv_sec = c->send_timeout_ms / 1000;
     timeout.tv_usec = (c->send_timeout_ms % 1000) * 1000;
 
@@ -122,6 +123,7 @@ xrpc_tcp_configure_socket(int fd, const struct xrpc_transport_tcp_config *c) {
   }
 
   if (c->recv_timeout_ms > 0) {
+    memset(&timeout, 0, sizeof(struct timeval));
     timeout.tv_sec = c->recv_timeout_ms / 1000;
     timeout.tv_usec = (c->recv_timeout_ms % 1000) * 1000;
 
