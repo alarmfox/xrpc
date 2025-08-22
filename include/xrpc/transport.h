@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #include "xrpc/error.h"
-
+#include "xrpc/xrpc.h"
 /*
  * The `xrpc_transport` abstraction provides method to manage low level
  * connections.
@@ -15,7 +15,6 @@
 // Forward declarations
 struct xrpc_transport;
 struct xrpc_connection;
-struct xrpc_transport_config;
 
 /*
  * Transport API. This is meant to be used directly by the server
@@ -212,7 +211,7 @@ static inline void connection_unref(struct xrpc_transport *t,
  * These are the core functions to be used by the client.
  */
 struct xrpc_client_connection;
-struct xrpc_client_config;
+
 struct xrpc_client_connection_ops {
   /*
    * @brief Connects to a server
@@ -226,15 +225,15 @@ struct xrpc_client_connection_ops {
    * @param[in] args   Pointer to a valid args struct
    *
    */
-  int (*connect)(struct xrpc_transport **t,
-                 const struct xrpc_client_config *args);
+  int (*connect)(struct xrpc_client_connection **conn,
+                 const struct xrpc_client_connection_config *args);
 
   /*
    * @brief Closes the connection to the server
    *
    * @param[in] t  Pointer to the transport instance
    */
-  void (*disconnect)(struct xrpc_client_connection *t);
+  void (*disconnect)(struct xrpc_client_connection *conn);
 
   /**
    * @brief Receives a len bytes from the connection.
@@ -250,7 +249,7 @@ struct xrpc_client_connection_ops {
    * @retval  0  Request successfully received.
    * @retval -1  An error occurred (including client disconnection).
    */
-  int (*recv)(struct xrpc_client_connection *t, void *buf, size_t len,
+  int (*recv)(struct xrpc_client_connection *conn, void *buf, size_t len,
               size_t *bytes_read);
 
   /**
@@ -267,10 +266,15 @@ struct xrpc_client_connection_ops {
    * @retval  0  Response successfully sent.
    * @retval -1  An error occurred while sending.
    */
-  int (*send)(struct xrpc_connection *conn, const void *buf, size_t len,
+  int (*send)(struct xrpc_client_connection *conn, const void *buf, size_t len,
               size_t *bytes_written);
 };
 
-extern const struct xrpc_client_connection_ops tcp_client_ops;
+struct xrpc_client_connection {
+  const struct xrpc_client_connection_ops *ops;
+  void *data; // transport-specific data
+};
+
+extern const struct xrpc_client_connection_ops xrpc_client_connection_tcp_ops;
 
 #endif // !XRPC_TRANSPORT_H

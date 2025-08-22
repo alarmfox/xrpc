@@ -214,6 +214,87 @@ void xrpc_server_free(struct xrpc_server *srv);
 
 /*
  * ==================================================================
+ * Client API
+ * ==================================================================
+ * These are the core functions to be used by the client.
+ */
+
+struct xrpc_client;
+
+enum xrpc_client_state {
+  XRPC_CLIENT_CONNECTED,
+  XRPC_CLIENT_DISCONNECTED,
+  XRPC_CLIENT_ERROR,
+};
+/*
+ * @brief TCP transport configuration struct.
+ *
+ * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
+ * and port.
+ */
+struct xrpc_client_connection_tcp_config {
+  struct sockaddr_in addr;
+};
+
+struct xrpc_client_connection_config {
+  enum xrpc_transport_type type;
+  union {
+    struct xrpc_client_connection_tcp_config tcp;
+  } config;
+};
+
+struct xrpc_client_config {
+  struct xrpc_client_connection_config *ccfg;
+};
+
+/*
+ * @brief Creates a client but not does not connect to anything.
+ *
+ * @param[out] cli  Pointer to allocated client instance.
+ * @return 0 on success, -1 on error.
+ */
+int xrpc_client_init(struct xrpc_client **cli);
+
+/*
+ * @brief Connect to an XRPC server.
+ *
+ * @param[out] cli  Pointer to the client instance.
+ * @param[in]  cfg  Pointer to client configuration
+ * @return 0 on success, -1 on error.
+ */
+int xrpc_client_connect(struct xrpc_client *cli,
+                        const struct xrpc_client_config *cfg);
+
+/*
+ * @brief Connect to an XRPC server.
+ *
+ * @param[in] cli  The client instance.
+ * @return 0 on success, -1 on error.
+ */
+int xrpc_client_disconnect(struct xrpc_client *cli);
+
+/*
+ * @brief Perform a synchronous RPC call.
+ *
+ * @param[in] cli           Client instance.
+ * @param[in] op            Operation ID
+ * @param[in] request_data  Pointer to request payload (can be NULL)
+ * @param[in] request_size  Size of request payload
+ * @param[out] response     Pointer to allocated response (caller must free)
+ * @return XRPC_SUCCESS on success, error code on failure.
+ */
+int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
+                          const void *request_data, size_t request_size,
+                          struct xrpc_response **response);
+
+/*
+ * @brief Close client and free resources.
+ *
+ * @param[in] cli Client instance
+ */
+void xrpc_client_free(struct xrpc_client *cli);
+/*
+ * ==================================================================
  * Configuration utils
  * ==================================================================
  */

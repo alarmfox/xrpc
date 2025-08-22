@@ -22,6 +22,7 @@
 // Exported VTable
 const struct xrpc_transport_ops xrpc_transport_tcp_ops;
 const struct xrpc_connection_ops xrpc_connection_tcp_ops;
+const struct xrpc_client_connection_ops xrpc_client_connection_tcp_ops;
 
 struct xrpc_transport_data {
   struct xrpc_pool *pool;
@@ -226,7 +227,7 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
   int ret;
   struct sockaddr_in client;
   socklen_t client_len = sizeof(struct sockaddr_in);
-  struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
+  struct xrpc_transport_data *data = t->data;
   struct xrpc_connection *conn = NULL;
   struct xrpc_connection_data *cdata = NULL;
 
@@ -247,12 +248,12 @@ static int xrpc_transport_server_tcp_accept(struct xrpc_transport *t,
       // normally accept -> we have been told that there is data
       client_fd = accept(data->fd, (struct sockaddr *)&client, &client_len);
     } else
-      return XRPC_TRANSPORT_WOULD_BLOCK;
+      return XRPC_TRANSPORT_ERR_WOULD_BLOCK;
   } else {
     client_fd = accept(data->fd, (struct sockaddr *)&client, &client_len);
 
     if (client_fd < 0 && (errno == EWOULDBLOCK || errno == EAGAIN))
-      return XRPC_TRANSPORT_WOULD_BLOCK;
+      return XRPC_TRANSPORT_ERR_WOULD_BLOCK;
     else if (client_fd < 0)
       XRPC_PRINT_SYSCALL_ERR_AND_RETURN("accept", XRPC_TRANSPORT_ERR_ACCEPT);
   }
@@ -292,8 +293,7 @@ static int xrpc_transport_server_tcp_send(struct xrpc_connection *conn,
                                           const void *b, size_t len,
                                           size_t *bytes_written) {
   ssize_t n;
-  struct xrpc_connection_data *cdata =
-      (struct xrpc_connection_data *)conn->data;
+  struct xrpc_connection_data *cdata = conn->data;
 
   n = write(cdata->fd, b, len);
   if (n <= 0)
@@ -307,15 +307,14 @@ static int xrpc_transport_server_tcp_send(struct xrpc_connection *conn,
 static int xrpc_transport_server_tcp_recv(struct xrpc_connection *conn, void *b,
                                           size_t len, size_t *bytes_read) {
   ssize_t n;
-  struct xrpc_connection_data *cdata =
-      (struct xrpc_connection_data *)conn->data;
+  struct xrpc_connection_data *cdata = conn->data;
 
   n = read(cdata->fd, b, len);
 
   if (n == 0) return XRPC_TRANSPORT_ERR_CONN_CLOSED;
   if (n < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK)
-      return XRPC_TRANSPORT_WOULD_BLOCK;
+      return XRPC_TRANSPORT_ERR_WOULD_BLOCK;
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("read", XRPC_TRANSPORT_ERR_READ);
   }
 
@@ -329,9 +328,8 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
   (void)t;
   if (!conn) return;
 
-  struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
-  struct xrpc_connection_data *cdata =
-      (struct xrpc_connection_data *)conn->data;
+  struct xrpc_transport_data *data = t->data;
+  struct xrpc_connection_data *cdata = conn->data;
 
   XRPC_DEBUG_PRINT("closing tcp connection (id=%lu)", conn->id);
   XRPC_BENCH_CONN_CLOSE(conn->id);
@@ -350,7 +348,7 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
 
 static void xrpc_transport_server_tcp_free(struct xrpc_transport *t) {
   if (!t) return;
-  struct xrpc_transport_data *data = (struct xrpc_transport_data *)t->data;
+  struct xrpc_transport_data *data = t->data;
   if (data) {
     if (data->fd > 0) close(data->fd);
     if (data->pool) {
@@ -375,4 +373,141 @@ const struct xrpc_transport_ops xrpc_transport_tcp_ops = {
 const struct xrpc_connection_ops xrpc_connection_tcp_ops = {
     .send = xrpc_transport_server_tcp_send,
     .recv = xrpc_transport_server_tcp_recv,
+};
+
+/*
+ * ========================================
+ * Client Transport implementation
+ * =========================================
+ */
+
+struct xrpc_client_connection_data {
+  int fd;
+};
+/*
+ * @brief Connects to a server
+ *
+ * This function creates a transport for the specific implementation. `args`
+ * must point to a valid configuration. The `transport` is ready to accept
+ * connections.
+ *
+ * @param[in,out] t  Pointer to the transport instance allocated, if
+ * successful
+ * @param[in] args   Pointer to a valid args struct
+ */
+static int
+xrpc_client_tcp_connect(struct xrpc_client_connection **conn,
+                        const struct xrpc_client_connection_config *args) {
+
+  if (!args) return XRPC_CLIENT_ERR_INVALID_CONFIG;
+
+  struct xrpc_client_connection *_conn =
+      malloc(sizeof(struct xrpc_client_connection));
+  struct xrpc_client_connection_data *data =
+      malloc(sizeof(struct xrpc_connection_data));
+  int ret;
+
+  if (!_conn || !data) return XRPC_INTERNAL_ERR_ALLOC;
+
+  data->fd = socket(AF_INET, SOCK_STREAM, 0);
+
+  if (data->fd < 0) return XRPC_TRANSPORT_ERR_SOCKET;
+
+  ret = connect(data->fd, (const struct sockaddr *)&args->config.tcp,
+                sizeof(struct sockaddr_in));
+
+  if (ret < 0) return XRPC_CLIENT_ERR_CONNECT;
+
+  _conn->data = data;
+
+  *conn = _conn;
+  return XRPC_SUCCESS;
+}
+
+/*
+ * @brief Closes the connection to the server
+ *
+ * @param[in] t  Pointer to the transport instance
+ */
+static void xrpc_client_tcp_disconnect(struct xrpc_client_connection *conn) {
+  if (!conn) return;
+  struct xrpc_client_connection_data *data = conn->data;
+
+  if (data && data->fd > 0) {
+    close(data->fd);
+    data->fd = -1;
+    free(data);
+    data = NULL;
+  }
+  free(conn);
+}
+
+/*
+ * @brief Send a buf of `len` bytes on the connection.
+ *
+ * Attempts to write `len` bytes to the connection from `buf` writing in
+ * `bytes_written` the number of bytes written.
+ *
+ * @param[in,out] t           Pointer to the connection instance.
+ * @param[in]  buf            Pointer to buffer containing data to send.
+ * @param[in]  len            Number of bytes to send.
+ * @param[out] bytes_written  Number of bytes read
+ *
+ * @retval  0  Response successfully sent.
+ * @retval -1  An error occurred while sending.
+ */
+int xrpc_client_tcp_send(struct xrpc_client_connection *conn, const void *buf,
+                         size_t len, size_t *bytes_written) {
+
+  ssize_t n;
+  struct xrpc_client_connection_data *data = conn->data;
+
+  n = write(data->fd, buf, len);
+  if (n <= 0)
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
+
+  *bytes_written = n;
+
+  return XRPC_SUCCESS;
+}
+
+/*
+ * @brief Receives a len bytes from the connection.
+ *
+ * Attempts to read `len` bytes from the `conn` into *buf writing in
+ * `*bytes_read` the number of bytes read.
+ *
+ * @param[in,out] conn    Pointer to the connection instance.
+ * @param[out] buf        Pointer to buffer to store received bytes.
+ * @param[in]  len        Number of bytes to read.
+ * @param[out] bytes_read Number of bytes read
+ *
+ * @retval  0  Request successfully received.
+ * @retval -1  An error occurred (including client disconnection).
+ */
+int xrpc_client_tcp_recv(struct xrpc_client_connection *conn, void *buf,
+                         size_t len, size_t *bytes_read) {
+
+  ssize_t n;
+  struct xrpc_client_connection_data *data = conn->data;
+
+  n = read(data->fd, buf, len);
+
+  if (n == 0) return XRPC_TRANSPORT_ERR_CONN_CLOSED;
+  if (n < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK)
+      return XRPC_TRANSPORT_ERR_WOULD_BLOCK;
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("read", XRPC_TRANSPORT_ERR_READ);
+  }
+
+  *bytes_read = n;
+
+  return XRPC_SUCCESS;
+}
+
+const struct xrpc_client_connection_ops xrpc_client_connection_tcp_ops = {
+    .connect = xrpc_client_tcp_connect,
+    .disconnect = xrpc_client_tcp_disconnect,
+    .send = xrpc_client_tcp_send,
+    .recv = xrpc_client_tcp_recv,
 };

@@ -76,6 +76,7 @@ void xrpc_pool_free(struct xrpc_pool *p);
 static inline size_t align_size(const size_t alignement, const size_t size) {
   return (size + alignement - 1) & ~(alignement - 1);
 }
+
 static inline size_t xrpc_pool_count(struct xrpc_pool *p) {
   return __atomic_load_n(&p->free_count, __ATOMIC_RELEASE);
 }

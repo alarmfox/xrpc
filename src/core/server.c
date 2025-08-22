@@ -379,7 +379,7 @@ static void io_request_completed(struct xrpc_io_operation *op) {
    * Handle partial operations. For now just reschedule
    */
 
-  if (op->status == XRPC_TRANSPORT_WOULD_BLOCK &&
+  if (op->status == XRPC_TRANSPORT_ERR_WOULD_BLOCK &&
       op->transferred_bytes < op->len) {
 
     xrpc_ringbuf_push(ctx->srv->active_contexts, ctx);
@@ -387,10 +387,11 @@ static void io_request_completed(struct xrpc_io_operation *op) {
   }
 
   /*
-   * If transport there are errors, mark the connection for close, free
+   * If there are errors, mark the connection for close, free
    * resources and skips to request completed which will trigger the cleanup
    */
-  if (op->status != XRPC_SUCCESS && op->status != XRPC_TRANSPORT_WOULD_BLOCK) {
+  if (op->status != XRPC_SUCCESS &&
+      op->status != XRPC_TRANSPORT_ERR_WOULD_BLOCK) {
 
     if (op->status == XRPC_TRANSPORT_ERR_CONN_CLOSED)
       connection_mark_for_close(ctx->conn);
