@@ -57,7 +57,7 @@ static int test_conn_refcount_single_thread() {
   connection_unref(&t, &conn);
 
   TEST_ASSERT_EQ(__atomic_load_n(&conn.ref_count, __ATOMIC_ACQUIRE), 0,
-                 "reference should never be negative");
+                 "reference count should never be negative");
 
   connection_mark_for_close(&conn);
   TEST_ASSERT_EQ(__atomic_load_n(&conn.is_closing, __ATOMIC_ACQUIRE), true,
@@ -68,6 +68,8 @@ static int test_conn_refcount_single_thread() {
       XRPC_INTERNAL_ERR_INVALID_CONN, ret,
       "after marked for closing connection cannot be referenced anymore");
 
+  TEST_ASSERT_EQ(__atomic_load_n(&conn.ref_count, __ATOMIC_ACQUIRE), 0,
+                 "reference count should remain 0");
   TEST_SUCCESS();
 }
 
