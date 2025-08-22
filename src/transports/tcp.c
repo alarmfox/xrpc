@@ -330,6 +330,7 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
       (struct xrpc_connection_data *)conn->data;
 
   XRPC_DEBUG_PRINT("closing tcp connection (id=%lu)", conn->id);
+  XRPC_BENCH_CONN_CLOSE(conn->id);
 
   if (cdata && cdata->fd > 0) {
     close(cdata->fd);
@@ -340,7 +341,6 @@ static void xrpc_transport_server_tcp_close(struct xrpc_transport *t,
                sizeof(struct xrpc_connection_data));
     // should never fail
     assert(xrpc_pool_put(data->pool, conn) == XRPC_SUCCESS);
-    XRPC_BENCH_CONN_CLOSE(conn->id);
   }
 }
 

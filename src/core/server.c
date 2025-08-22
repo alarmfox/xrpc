@@ -210,6 +210,7 @@ int xrpc_server_run(struct xrpc_server *srv) {
           ret = create_request_context(srv, ctx->conn, &_ctx);
           if (ret == XRPC_SUCCESS)
             xrpc_ringbuf_push(srv->active_contexts, _ctx);
+          XRPC_DEBUG_PRINT("created context for connection %lu", ctx->conn->id);
         }
       }
       advance_request_state_machine(ctx);
@@ -252,7 +253,8 @@ static int create_request_context(struct xrpc_server *srv,
                                   struct xrpc_request_context **ctx) {
 
   // don't create context for closing connection, closed or invalid connections
-  if (!conn || !connection_is_valid(conn)) return XRPC_API_ERR_INVALID_CONN;
+  if (!conn || !connection_is_valid(conn))
+    return XRPC_INTERNAL_ERR_INVALID_CONN;
 
   if (xrpc_pool_get(srv->request_context_pool, (void **)ctx) != XRPC_SUCCESS)
     return XRPC_INTERNAL_ERR_ALLOC;
@@ -287,8 +289,9 @@ static void free_request_context(struct xrpc_server *srv,
                         sizeof(struct xrpc_request_header) +
                         sizeof(struct xrpc_response_header) + MAX_REQUEST_SIZE;
 
-  if (ctx->state == XRPC_REQ_STATE_WRITE_BODY && ctx->response_data) {
+  if (ctx->response_data) {
     free(ctx->response_data);
+    ctx->response_data = NULL;
   }
 
   if (ctx->last_error == XRPC_SUCCESS ||

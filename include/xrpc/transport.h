@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "xrpc/error.h"
+
 /*
  * The `xrpc_transport` abstraction provides method to manage low level
  * connections.
@@ -137,42 +139,70 @@ extern const struct xrpc_transport_ops xrpc_transport_tcp_ops;
  */
 
 static inline bool connection_is_valid(struct xrpc_connection *c) {
-  return c && !c->is_closed && !c->is_closing;
+  return c && !__atomic_load_n(&c->is_closed, __ATOMIC_ACQUIRE) &&
+         !__atomic_load_n(&c->is_closing, __ATOMIC_ACQUIRE);
 }
 
 static inline void connection_mark_for_close(struct xrpc_connection *c) {
   if (!c) return;
-  c->is_closing = true;
+  // Ensure all prior writes are visible before marking closing
+  __atomic_store_n(&c->is_closing, true, __ATOMIC_RELEASE);
 }
 
-static inline void connection_ref(struct xrpc_transport *t,
-                                  struct xrpc_connection *c) {
+static inline int connection_ref(struct xrpc_transport *t,
+                                 struct xrpc_connection *c) {
   (void)t;
-  if (!c) return;
+  if (!c) return XRPC_INTERNAL_ERR_INVALID_CONN;
 
-  __atomic_fetch_add(&c->ref_count, 1, __ATOMIC_RELAXED);
+  int expected = __atomic_load_n(&c->ref_count, __ATOMIC_ACQUIRE);
+
+  while (true) {
+    // Don't allow new references if connection is closing/closed
+    if (__atomic_load_n(&c->is_closing, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&c->is_closed, __ATOMIC_ACQUIRE)) {
+      return XRPC_INTERNAL_ERR_INVALID_CONN;
+    }
+
+    int desired = expected + 1;
+    if (__atomic_compare_exchange_n(&c->ref_count, &expected, desired, true,
+                                    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+      return XRPC_SUCCESS;
+    }
+    // CAS failed, `expected` updated, retry
+  }
 }
 
 static inline void connection_unref(struct xrpc_transport *t,
                                     struct xrpc_connection *c) {
   if (!c || !t) return;
 
-  int ref_count;
-
-  ref_count = __atomic_load_n(&c->ref_count, __ATOMIC_SEQ_CST);
+  int ref_count = __atomic_load_n(&c->ref_count, __ATOMIC_ACQUIRE);
 
   while (1) {
-    if (__atomic_compare_exchange_n(&c->ref_count, &ref_count, ref_count - 1,
-                                    true, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
-
-      // if the ref_count <= 0 and the conn is closing close safely the
-      // underlying connection
-      if (ref_count <= 0 && c->is_closing) {
-        if (t->ops->close) t->ops->close(t, c);
-        c->is_closed = true;
-      }
-      break;
+    if (ref_count <= 0) {
+      // Already closed or invalid state
+      return;
     }
+
+    int desired = ref_count - 1;
+    if (__atomic_compare_exchange_n(&c->ref_count, &ref_count, desired, true,
+                                    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+      if (desired == 0) {
+        // Last reference released
+        bool already_closed = __atomic_load_n(&c->is_closed, __ATOMIC_ACQUIRE);
+        if (!already_closed) {
+          // Mark as closed (only once)
+          bool expected_closed = false;
+          if (__atomic_compare_exchange_n(&c->is_closed, &expected_closed, true,
+                                          true, __ATOMIC_RELEASE,
+                                          __ATOMIC_RELAXED)) {
+            if (t->ops->close) { t->ops->close(t, c); }
+          }
+        }
+      }
+      return;
+    }
+    // CAS failed, ref_count updated, retry
   }
 }
 
