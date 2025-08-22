@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <sys/un.h>
 
-struct xrpc_transport;
 /**
  * @brief RPC request header
  *
@@ -70,17 +69,6 @@ struct __attribute__((packed)) xrpc_response {
  * ==================================================================
  */
 
-/*
- * @brief Unix transport configuration struct.
- *
- * Unix transport configuration struct. Contains sockaddr_un which contains the
- * path for the socket.
- *
- */
-struct xrpc_transport_unix_config {
-  struct sockaddr_un addr;
-};
-
 /**
  * @brief TCP transport configuration struct.
  *
@@ -118,23 +106,8 @@ struct xrpc_transport_tcp_config {
                             // connection memory
 };
 
-/**
- * @brief TLS transport configuration struct.
- *
- * TLS transport configuration struct. Contains sockaddr_in which contains IPv4
- * and port and the path to the certificate and the private key.
- */
-struct xrpc_transport_tls_config {
-  const char *address;
-  const char *port;
-  const char *crt_path;
-  const char *key_path;
-};
-
 enum xrpc_transport_type {
-  XRPC_TRANSPORT_UNIX,
   XRPC_TRANSPORT_TCP,
-  XRPC_TRANSPORT_TLS,
 };
 
 enum xrpc_io_system_type {
@@ -144,9 +117,7 @@ enum xrpc_io_system_type {
 struct xrpc_transport_config {
   enum xrpc_transport_type type;
   union {
-    struct xrpc_transport_unix_config unix;
     struct xrpc_transport_tcp_config tcp;
-    struct xrpc_transport_tls_config tls;
   } config;
 };
 
@@ -235,100 +206,11 @@ int xrpc_server_run(struct xrpc_server *srv);
 void xrpc_server_stop(struct xrpc_server *srv);
 
 /**
- * @brief Free server resources.
- *
- * Frees ring buffers, closes connections, and releases the transport.
+ * @brief Release server resources.
  *
  * @param srv  Server instance to free.
  */
 void xrpc_server_free(struct xrpc_server *srv);
-
-/*
- * ==================================================================
- * Client configuration system
- * ==================================================================
- */
-
-/*
- * ==================================================================
- * Client API
- * ==================================================================
- */
-struct xrpc_client;
-
-/**
- * @brief Unix transport configuration struct.
- *
- * Unix transport configuration struct. Contains sockaddr_un which contains the
- * path for the socket.
- *
- */
-struct xrpc_client_unix_config {
-  struct sockaddr_un addr;
-};
-
-/**
- * @brief TCP transport configuration struct.
- *
- * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
- * and port.
- */
-struct xrpc_client_tcp_config {
-  struct sockaddr_in addr;
-};
-
-/**
- * @brief TLS transport configuration struct.
- *
- * TLS transport configuration struct. Contains sockaddr_in which contains IPv4
- * and port and the path to the certificate and the private key.
- */
-struct xrpc_client_tls_config {
-  const char *address;
-  const char *port;
-  const char *crt_path;
-  const char *key_path;
-};
-
-struct xrpc_client_config {
-  enum xrpc_transport_type type;
-  union {
-    struct xrpc_client_unix_config unix;
-    struct xrpc_client_tcp_config tcp;
-    struct xrpc_client_tls_config tls;
-  } config;
-};
-
-/*
- * Init unix client
- */
-int xrpc_transport_client_init(struct xrpc_transport **t,
-                               const struct xrpc_client_config *c);
-
-/**
- * @brief Connect to an XRPC server.
- *
- * @param[out] cli  Pointer to allocated client instance.
- * @param[in]  t    Initialized transport instance (connected to server).
- * @return 0 on success, -1 on error.
- */
-int xrpc_client_init(struct xrpc_client **cli, struct xrpc_transport *t);
-
-/**
- * @brief Perform a synchronous RPC call.
- *
- * @param cli   Client instance.
- * @param rq    Pointer to request (hdr + data must be filled).
- * @param rs    Pointer to response (hdr + data buffer must be allocated).
- * @return 0 on success, -1 on error.
- */
-int xrpc_call(struct xrpc_client *cli, const struct xrpc_request *rq,
-              struct xrpc_response *rs);
-
-/**
- * @brief Close client and free resources.
- */
-void xrpc_client_free(struct xrpc_client *cli);
 
 /*
  * ==================================================================

@@ -57,7 +57,7 @@ struct xrpc_transport_ops {
    * @param[in] t      Pointer to the transport instance.
    * @param[in,out] c  Pointer to the new allocated connection.
    *
-   * @retval  0  A new client was successfully accepted.
+   * @return  XRPC_SUCCESS  on success. A new client was successfully accepted.
    * @retval -1  No new client available or an error occurred.
    */
   int (*accept)(struct xrpc_transport *t, struct xrpc_connection **c);
@@ -129,8 +129,7 @@ struct xrpc_transport {
 };
 
 /*
- * Exporting VTables abstracting different transport implementation
- *
+ * Exporting VTables abstracting different server transport implementation
  */
 extern const struct xrpc_transport_ops xrpc_transport_tcp_ops;
 
@@ -205,5 +204,73 @@ static inline void connection_unref(struct xrpc_transport *t,
     // CAS failed, ref_count updated, retry
   }
 }
+
+/*
+ * ==================================================================
+ * Client Transport API
+ * ==================================================================
+ * These are the core functions to be used by the client.
+ */
+struct xrpc_client_connection;
+struct xrpc_client_config;
+struct xrpc_client_connection_ops {
+  /*
+   * @brief Connects to a server
+   *
+   * This function creates a transport for the specific implementation. `args`
+   * must point to a valid configuration. The `transport` is ready to accept
+   * connections.
+   *
+   * @param[in,out] t  Pointer to the transport instance allocated, if
+   * successful
+   * @param[in] args   Pointer to a valid args struct
+   *
+   */
+  int (*connect)(struct xrpc_transport **t,
+                 const struct xrpc_client_config *args);
+
+  /*
+   * @brief Closes the connection to the server
+   *
+   * @param[in] t  Pointer to the transport instance
+   */
+  void (*disconnect)(struct xrpc_client_connection *t);
+
+  /**
+   * @brief Receives a len bytes from the connection.
+   *
+   * Attempts to read `len` bytes from the `conn` into *buf writing in
+   * `*bytes_read` the number of bytes read.
+   *
+   * @param[in,out] conn    Pointer to the connection instance.
+   * @param[out] buf        Pointer to buffer to store received bytes.
+   * @param[in]  len        Number of bytes to read.
+   * @param[out] bytes_read Number of bytes read
+   *
+   * @retval  0  Request successfully received.
+   * @retval -1  An error occurred (including client disconnection).
+   */
+  int (*recv)(struct xrpc_client_connection *t, void *buf, size_t len,
+              size_t *bytes_read);
+
+  /**
+   * @brief Send a buf of `len` bytes on the connection.
+   *
+   * Attempts to write `len` bytes to the connection from `buf` writing in
+   * `bytes_written` the number of bytes written.
+   *
+   * @param[in,out] t           Pointer to the connection instance.
+   * @param[in]  buf            Pointer to buffer containing data to send.
+   * @param[in]  len            Number of bytes to send.
+   * @param[out] bytes_written  Number of bytes read
+   *
+   * @retval  0  Response successfully sent.
+   * @retval -1  An error occurred while sending.
+   */
+  int (*send)(struct xrpc_connection *conn, const void *buf, size_t len,
+              size_t *bytes_written);
+};
+
+extern const struct xrpc_client_connection_ops tcp_client_ops;
 
 #endif // !XRPC_TRANSPORT_H
