@@ -9,7 +9,7 @@
 
 struct xrpc_client {
   struct xrpc_client_connection *conn;
-  enum xrpc_client_state state;
+  enum xrpc_client_status state;
   uint64_t next_reqid;
   int last_error;
 };
@@ -270,7 +270,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
 }
 
 int xrpc_client_disconnect(struct xrpc_client *cli) {
-  if (!cli) { return XRPC_CLIENT_ERR_INVALID_CONFIG; }
+  if (!cli) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 
   if (cli->state != XRPC_CLIENT_CONNECTED || !cli->conn) {
     return XRPC_CLIENT_ERR_NOT_CONNECTED;
@@ -301,4 +301,15 @@ void xrpc_client_free(struct xrpc_client *cli) {
 
   free(cli);
   XRPC_DEBUG_PRINT("client freed");
+}
+
+/*
+ * @brief Get the current client status
+ *
+ * @param[in] cli Client instance
+ */
+enum xrpc_client_status xrpc_client_status_get(const struct xrpc_client *cli) {
+  if (!cli) return XRPC_CLIENT_DISCONNECTED;
+
+  return cli->state;
 }
