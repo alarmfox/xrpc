@@ -266,9 +266,8 @@ struct xrpc_client_connection_data {
  * successful
  * @param[in] args   Pointer to a valid args struct
  */
-static int
-xrpc_client_tcp_connect(struct xrpc_client_connection **conn,
-                        const struct xrpc_client_connection_config *args) {
+static int xrpc_client_tcp_connect(struct xrpc_client_connection **conn,
+                                   const struct xrpc_client_config *args) {
 
   if (!conn || !args) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 

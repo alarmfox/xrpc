@@ -221,7 +221,7 @@ void xrpc_server_free(struct xrpc_server *srv);
 
 struct xrpc_client;
 
-enum xrpc_client_state {
+enum xrpc_client_status {
   XRPC_CLIENT_CONNECTED,
   XRPC_CLIENT_DISCONNECTED,
   XRPC_CLIENT_ERROR,
@@ -253,15 +253,11 @@ struct xrpc_client_connection_tcp_config {
   bool nonblocking; // Set O_NONBLOCK
 };
 
-struct xrpc_client_connection_config {
+struct xrpc_client_config {
   enum xrpc_transport_type type;
   union {
     struct xrpc_client_connection_tcp_config tcp;
   } config;
-};
-
-struct xrpc_client_config {
-  struct xrpc_client_connection_config *ccfg;
 };
 
 /*
@@ -310,6 +306,30 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
  * @param[in] cli Client instance
  */
 void xrpc_client_free(struct xrpc_client *cli);
+
+/*
+ * @brief Get the current client status
+ *
+ * @param[in] cli Client instance
+ */
+enum xrpc_client_status xrpc_client_status_get(const struct xrpc_client *cli);
+
+/*
+ * @brief Check if a client is connected
+ *
+ * @param[in] cli Client instance
+ * @param[out] true if the server is connected, false otherwise
+ */
+bool xrpc_client_is_connected(const struct xrpc_client *cli);
+
+/*
+ * @brief Return the server name
+ *
+ * @param[in] cli Client instance
+ * @param[out] Server name if connected. "" otherwise.
+ */
+const char *xrpc_client_get_server_name(const struct xrpc_client *cli);
+
 /*
  * ==================================================================
  * Configuration utils

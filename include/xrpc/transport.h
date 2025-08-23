@@ -226,7 +226,7 @@ struct xrpc_client_connection_ops {
    *
    */
   int (*connect)(struct xrpc_client_connection **conn,
-                 const struct xrpc_client_connection_config *args);
+                 const struct xrpc_client_config *args);
 
   /*
    * @brief Closes the connection to the server

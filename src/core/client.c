@@ -1,6 +1,9 @@
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 
 #include "xrpc/debug.h"
 #include "xrpc/error.h"
@@ -9,8 +12,9 @@
 
 struct xrpc_client {
   struct xrpc_client_connection *conn;
-  enum xrpc_client_status state;
+  enum xrpc_client_status status;
   uint64_t next_reqid;
+  char server_name[128];
   int last_error;
 };
 
@@ -19,6 +23,16 @@ struct xrpc_client {
 static const struct xrpc_client_connection_ops *connection_ops_map[] = {
     [XRPC_TRANSPORT_TCP] = &xrpc_client_connection_tcp_ops,
 };
+
+static void set_server_name(struct xrpc_client *cli,
+                            const struct xrpc_client_config *cfg) {
+  switch (cfg->type) {
+  case XRPC_TRANSPORT_TCP:
+    snprintf(cli->server_name, sizeof(cli->server_name), "%s://%s:%d", "tcp",
+             inet_ntoa(cfg->config.tcp.addr.sin_addr),
+             ntohs(cfg->config.tcp.addr.sin_port));
+  }
+}
 
 /*
  * Helper function to send exactly n bytes
@@ -97,7 +111,8 @@ int xrpc_client_init(struct xrpc_client **cli) {
   c->conn = NULL;
   c->last_error = XRPC_SUCCESS;
   c->next_reqid = 1;
-  c->state = XRPC_CLIENT_DISCONNECTED;
+  c->status = XRPC_CLIENT_DISCONNECTED;
+  memset(c->server_name, 0, sizeof(c->server_name));
 
   *cli = c;
   return XRPC_SUCCESS;
@@ -112,38 +127,38 @@ int xrpc_client_init(struct xrpc_client **cli) {
  */
 int xrpc_client_connect(struct xrpc_client *cli,
                         const struct xrpc_client_config *cfg) {
-  if (!cli || !cfg || !cfg->ccfg) { return XRPC_CLIENT_ERR_INVALID_CONFIG; }
+  if (!cli || !cfg) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 
   // Check if already connected
-  if (cli->state == XRPC_CLIENT_CONNECTED) {
+  if (cli->status == XRPC_CLIENT_CONNECTED) {
     XRPC_DEBUG_PRINT("client already connected");
     return XRPC_SUCCESS;
   }
 
   // Validate transport type
-  if ((size_t)cfg->ccfg->type >=
+  if ((size_t)cfg->type >=
           sizeof(connection_ops_map) / sizeof(connection_ops_map[0]) ||
-      !connection_ops_map[cfg->ccfg->type]) {
+      !connection_ops_map[cfg->type]) {
     cli->last_error = XRPC_CLIENT_ERR_INVALID_TRANSPORT;
-    cli->state = XRPC_CLIENT_ERROR;
+    cli->status = XRPC_CLIENT_ERROR;
     return XRPC_CLIENT_ERR_INVALID_TRANSPORT;
   }
 
   // Get transport operations
-  const struct xrpc_client_connection_ops *ops =
-      connection_ops_map[cfg->ccfg->type];
+  const struct xrpc_client_connection_ops *ops = connection_ops_map[cfg->type];
 
   // Attempt connection
-  int ret = ops->connect(&cli->conn, cfg->ccfg);
+  int ret = ops->connect(&cli->conn, cfg);
   if (ret != XRPC_SUCCESS) {
     cli->last_error = ret;
-    cli->state = XRPC_CLIENT_ERROR;
+    cli->status = XRPC_CLIENT_ERROR;
     XRPC_DEBUG_PRINT("connection failed: %d", ret);
     return ret;
   }
 
-  cli->state = XRPC_CLIENT_CONNECTED;
+  cli->status = XRPC_CLIENT_CONNECTED;
   cli->last_error = XRPC_SUCCESS;
+  set_server_name(cli, cfg);
 
   XRPC_DEBUG_PRINT("client connected successfully");
   return XRPC_SUCCESS;
@@ -168,7 +183,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
   *response = NULL; // Initialize output parameter
 
   // Check client state
-  if (cli->state != XRPC_CLIENT_CONNECTED || !cli->conn) {
+  if (cli->status != XRPC_CLIENT_CONNECTED || !cli->conn) {
     cli->last_error = XRPC_CLIENT_ERR_NOT_CONNECTED;
     return XRPC_CLIENT_ERR_NOT_CONNECTED;
   }
@@ -188,7 +203,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
   ret = send_exact_n(cli->conn, &req_hdr, sizeof(struct xrpc_request_header));
   if (ret != XRPC_SUCCESS) {
     cli->last_error = ret;
-    cli->state = XRPC_CLIENT_ERROR;
+    cli->status = XRPC_CLIENT_ERROR;
     XRPC_DEBUG_PRINT("failed to send request header: %d", ret);
     return ret;
   }
@@ -198,7 +213,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
     ret = send_exact_n(cli->conn, request_data, request_size);
     if (ret != XRPC_SUCCESS) {
       cli->last_error = ret;
-      cli->state = XRPC_CLIENT_ERROR;
+      cli->status = XRPC_CLIENT_ERROR;
       XRPC_DEBUG_PRINT("failed to send request body: %d", ret);
       return ret;
     }
@@ -209,7 +224,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
   ret = recv_exact_n(cli->conn, &resp_hdr, sizeof(struct xrpc_response_header));
   if (ret != XRPC_SUCCESS) {
     cli->last_error = ret;
-    cli->state = XRPC_CLIENT_ERROR;
+    cli->status = XRPC_CLIENT_ERROR;
     XRPC_DEBUG_PRINT("failed to receive response header: %d", ret);
     return ret;
   }
@@ -217,7 +232,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
   // Validate response header
   if (resp_hdr.reqid != req_hdr.reqid) {
     cli->last_error = XRPC_CLIENT_ERR_PROTOCOL;
-    cli->state = XRPC_CLIENT_ERROR;
+    cli->status = XRPC_CLIENT_ERROR;
     XRPC_DEBUG_PRINT("request ID mismatch: sent=%lu, received=%lu",
                      req_hdr.reqid, resp_hdr.reqid);
     return XRPC_CLIENT_ERR_PROTOCOL;
@@ -225,7 +240,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
 
   if (resp_hdr.op != req_hdr.op) {
     cli->last_error = XRPC_CLIENT_ERR_PROTOCOL;
-    cli->state = XRPC_CLIENT_ERROR;
+    cli->status = XRPC_CLIENT_ERROR;
     XRPC_DEBUG_PRINT("operation ID mismatch: sent=%u, received=%u", req_hdr.op,
                      resp_hdr.op);
     return XRPC_CLIENT_ERR_PROTOCOL;
@@ -236,7 +251,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
   struct xrpc_response *resp = malloc(total_size);
   if (!resp) {
     cli->last_error = XRPC_INTERNAL_ERR_ALLOC;
-    cli->state = XRPC_CLIENT_ERROR;
+    cli->status = XRPC_CLIENT_ERROR;
     return XRPC_INTERNAL_ERR_ALLOC;
   }
 
@@ -252,7 +267,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
     ret = recv_exact_n(cli->conn, resp->data, resp_hdr.sz);
     if (ret != XRPC_SUCCESS) {
       cli->last_error = ret;
-      cli->state = XRPC_CLIENT_ERROR;
+      cli->status = XRPC_CLIENT_ERROR;
       free(resp);
       XRPC_DEBUG_PRINT("failed to receive response body: %d", ret);
       return ret;
@@ -272,8 +287,8 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
 int xrpc_client_disconnect(struct xrpc_client *cli) {
   if (!cli) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 
-  if (cli->state != XRPC_CLIENT_CONNECTED || !cli->conn) {
-    return XRPC_CLIENT_ERR_NOT_CONNECTED;
+  if (cli->status != XRPC_CLIENT_CONNECTED || !cli->conn) {
+    return XRPC_SUCCESS;
   }
 
   if (cli->conn->ops && cli->conn->ops->disconnect) {
@@ -281,10 +296,10 @@ int xrpc_client_disconnect(struct xrpc_client *cli) {
   }
 
   cli->conn = NULL;
-  cli->state = XRPC_CLIENT_DISCONNECTED;
+  cli->status = XRPC_CLIENT_DISCONNECTED;
   cli->last_error = XRPC_SUCCESS;
+  memset(cli->server_name, 0, sizeof(cli->server_name));
 
-  XRPC_DEBUG_PRINT("client disconnected");
   return XRPC_SUCCESS;
 }
 
@@ -297,10 +312,9 @@ void xrpc_client_free(struct xrpc_client *cli) {
   if (!cli) return;
 
   // Disconnect if still connected
-  if (cli->state == XRPC_CLIENT_CONNECTED) xrpc_client_disconnect(cli);
+  if (cli->status == XRPC_CLIENT_CONNECTED) xrpc_client_disconnect(cli);
 
   free(cli);
-  XRPC_DEBUG_PRINT("client freed");
 }
 
 /*
@@ -311,5 +325,27 @@ void xrpc_client_free(struct xrpc_client *cli) {
 enum xrpc_client_status xrpc_client_status_get(const struct xrpc_client *cli) {
   if (!cli) return XRPC_CLIENT_DISCONNECTED;
 
-  return cli->state;
+  return cli->status;
+}
+
+/*
+ * @brief Check if a client is connected
+ *
+ * @param[in] cli Client instance
+ * @param[out] true if the server is connected, false otherwise
+ */
+bool xrpc_client_is_connected(const struct xrpc_client *cli) {
+  if (!cli) return false;
+  return cli->status == XRPC_CLIENT_CONNECTED;
+}
+
+/*
+ * @brief Return the server name
+ *
+ * @param[in] cli Client instance
+ * @param[out] Server name if connected. "" otherwise.
+ */
+const char *xrpc_client_get_server_name(const struct xrpc_client *cli) {
+  if (!cli) return "";
+  return cli->server_name;
 }

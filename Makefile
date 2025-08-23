@@ -96,7 +96,7 @@ benchmark/%.o: benchmark/%.c
 
 ## clean: remove all build artifacts
 clean:
-	$(RM) $(LIB_OBJS) $(CLI_OBJS) $(INSTR_OBJS) $(TEST_BINS) $(TEST_OBJS) $(BENCH_OBJS) $(BENCH_BINS) libxrpc.a examples/*/server
+	$(RM) $(LIB_OBJS) $(CLI_OBJS) $(INSTR_OBJS) $(TEST_BINS) $(TEST_OBJS) $(BENCH_OBJS) $(BENCH_BINS) libxrpc.a examples/*/server xrpc_client
 
 ## help: prints this help message
 help:
