@@ -309,9 +309,6 @@ static int create_request_context(struct xrpc_server *srv,
 static void free_request_context(struct xrpc_server *srv,
                                  struct xrpc_request_context *ctx) {
   if (!ctx) return;
-  size_t context_size = sizeof(struct xrpc_request_context) +
-                        sizeof(struct xrpc_request_header) +
-                        sizeof(struct xrpc_response_header) + MAX_REQUEST_SIZE;
 
   if (ctx->response_data) {
     free(ctx->response_data);
@@ -327,7 +324,6 @@ static void free_request_context(struct xrpc_server *srv,
   if (ctx->conn) connection_unref(ctx->srv->transport, ctx->conn);
 
   assert(xrpc_pool_put(srv->request_context_pool, ctx) == XRPC_SUCCESS);
-  memset(ctx, 0, context_size);
 }
 
 // Schedule an I/O operation based on the current request state

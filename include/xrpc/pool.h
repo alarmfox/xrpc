@@ -61,7 +61,7 @@ int xrpc_pool_get(struct xrpc_pool *p, void **elem);
  * @return XRPC_SUCCESS on success
  * @return XRPC_INTERNAL_ERR_POOL_INVALID_ARG when elem is not part of the pool
  */
-int xrpc_pool_put(struct xrpc_pool *p, const void *elem);
+int xrpc_pool_put(struct xrpc_pool *p, void *elem);
 
 /*
  * @brief Free pool resources.

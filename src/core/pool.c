@@ -99,7 +99,7 @@ int xrpc_pool_get(struct xrpc_pool *p, void **elem) {
  * @return XRPC_SUCCESS on success
  * @return XRPC_INTERNAL_ERR_POOL_INVALID_ARG when elem is not part of the pool
  */
-int xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
+int xrpc_pool_put(struct xrpc_pool *p, void *elem) {
   // Check first if element belongs to the pool.
   const uint8_t *start = (const uint8_t *)p->items;
   const uint8_t *end = (const uint8_t *)p->items + p->capacity * p->elem_size;
@@ -123,6 +123,7 @@ int xrpc_pool_put(struct xrpc_pool *p, const void *elem) {
                                     current_free + 1, true, __ATOMIC_RELAXED,
                                     __ATOMIC_RELAXED)) {
 
+      memset(elem, 0, p->elem_size);
       p->free_list[current_free] = (void *)elem;
       return XRPC_SUCCESS;
     }

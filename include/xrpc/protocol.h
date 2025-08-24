@@ -17,20 +17,21 @@ enum xrpc_response_status {
  *
  * Before sending the requests, the client will send the header containng the
  * selected operation and the size of the request.
+ *
  */
-struct xrpc_request_header {
+struct __attribute__((packed)) xrpc_request_header {
   uint32_t operation_id; /* Operation ID */
   uint32_t payload_size; /* Size of the payload */
   uint64_t request_id;   /* Request identifier */
 };
 
-/**
+/*
  * @brief RPC response header
  *
  * Before sending the response, the server will send the header containng the
  * selected operation and the size of the request and a byte status.
  */
-struct xrpc_response_header {
+struct __attribute__((packed)) xrpc_response_header {
   uint32_t operation_id; /* Operation ID*/
   uint32_t payload_size; /* Size of the payload */
   uint64_t request_id;   /* Request identifier */
@@ -57,7 +58,7 @@ struct xrpc_request {
  * data (up to hdr->sz) and updating the hdr->sz with the actual bytes
  * number of response.
  */
-struct xrpc_response {
+struct __attribute__((packed)) xrpc_response {
   struct xrpc_response_header *hdr; /* Header of the request */
   uint8_t *payload;                 /* Buffer for writing response data */
 };

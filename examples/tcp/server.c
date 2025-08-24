@@ -38,6 +38,7 @@ static int echo_handler(const struct xrpc_request *req,
   res->hdr->payload_size = sizeof(uint64_t);
 
   res->payload = malloc(sizeof(uint64_t));
+  memset(res->payload, 0, sizeof(uint64_t));
   memcpy(res->payload, req->payload, sizeof(uint64_t));
 
   return XRPC_SUCCESS;

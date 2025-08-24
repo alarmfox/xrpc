@@ -393,11 +393,9 @@ int xrpc_client_tcp_send(struct xrpc_client_connection *conn, const void *buf,
     } else if (errno == EPIPE || errno == ECONNRESET) {
       conn->is_connected = false;
       return XRPC_TRANSPORT_ERR_CONN_CLOSED;
-    } else {
-      XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
     }
+    XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
   }
-  XRPC_PRINT_SYSCALL_ERR_AND_RETURN("write", XRPC_TRANSPORT_ERR_WRITE);
 
   if (n == 0) {
     // This shouldn't happen with write(), but handle gracefully
