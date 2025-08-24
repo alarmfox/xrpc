@@ -4,9 +4,6 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <stdint.h>
-#include <string.h>
-
-#include "xrpc/error.h"
 
 // clang-format off
 /*
@@ -171,3 +168,5 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
 # define xrpc_hton64(x) (x)
 # define xrpc_ntoh64(x) (x)
 #endif
+
+#endif //! XRPC_PROTOCOL_H
