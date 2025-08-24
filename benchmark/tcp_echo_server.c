@@ -56,10 +56,10 @@ static int echo_handler(const struct xrpc_request *req,
                         struct xrpc_response *res) {
 
   res->hdr->status = XRPC_RESPONSE_SUCCESS;
-  res->hdr->sz = sizeof(uint64_t);
+  res->hdr->payload_size = sizeof(uint64_t);
 
-  res->data = malloc(sizeof(uint64_t));
-  memcpy(res->data, req->data, sizeof(uint64_t));
+  res->payload = malloc(sizeof(uint64_t));
+  memcpy(res->payload, req->payload, sizeof(uint64_t));
 
   return XRPC_SUCCESS;
 }

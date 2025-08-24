@@ -246,7 +246,6 @@ static void cmd_help(int argc, char **argv) {
  * <proto>://<address>:<port>. The user can pass parameters to configure the
  * connection. Right now only tcp protocol is supported
  */
-
 static void cmd_connect(int argc, char **argv) {
   if (argc < 1) {
     printf("Error: connect missing server address\n");
@@ -333,7 +332,7 @@ static void interactive_loop() {
       end--;
     end[1] = '\0';
 
-    if (0 == end - start) continue;
+    if (0 == (end - start)) continue;
 
     execute_command(start);
   }

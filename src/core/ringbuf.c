@@ -16,25 +16,25 @@
  * memory
  * @return XRPC_INTENAL_ERR_RINGBUF_INVALID_ARG if capacity is zero.
  */
-int xrpc_ringbuf_init(struct xrpc_ringbuf **rb, const size_t capacity) {
+int xrpc_ringbuf_init(struct xrpc_ringbuf **out_rb, const size_t capacity) {
 
   if (capacity == 0) return XRPC_INTERNAL_ERR_RINGBUF_INVALID_ARG;
 
-  struct xrpc_ringbuf *_rb = malloc(sizeof(struct xrpc_ringbuf));
+  struct xrpc_ringbuf *rb = malloc(sizeof(struct xrpc_ringbuf));
 
-  if (!_rb) return XRPC_INTERNAL_ERR_ALLOC;
+  if (!rb) return XRPC_INTERNAL_ERR_ALLOC;
 
-  _rb->capacity = capacity + 1;
-  _rb->head = 0;
-  _rb->tail = 0;
+  rb->capacity = capacity + 1;
+  rb->head = 0;
+  rb->tail = 0;
 
   // align the allocation. The size of void * should already be memory aligned
-  _rb->items = aligned_alloc(CACHE_LINE_SIZE, sizeof(void *) * _rb->capacity);
-  if (!_rb->items) return XRPC_INTERNAL_ERR_ALLOC;
+  rb->items = aligned_alloc(CACHE_LINE_SIZE, sizeof(void *) * rb->capacity);
+  if (!rb->items) return XRPC_INTERNAL_ERR_ALLOC;
 
-  memset(_rb->items, 0, sizeof(void *) * _rb->capacity);
+  memset(rb->items, 0, sizeof(void *) * rb->capacity);
 
-  *rb = _rb;
+  *out_rb = rb;
 
   return XRPC_SUCCESS;
 }

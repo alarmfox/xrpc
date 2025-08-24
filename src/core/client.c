@@ -7,6 +7,7 @@
 
 #include "xrpc/debug.h"
 #include "xrpc/error.h"
+#include "xrpc/protocol.h"
 #include "xrpc/transport.h"
 #include "xrpc/xrpc.h"
 
@@ -101,20 +102,20 @@ static int recv_exact_n(struct xrpc_client_connection *conn, void *buf,
  * @param[in]  cfg  Pointer to client configuration
  * @return XRPC_SUCCESS on success,
  */
-int xrpc_client_init(struct xrpc_client **cli) {
-  if (!cli) return XRPC_CLIENT_ERR_INVALID_CONFIG;
+int xrpc_client_init(struct xrpc_client **out_client) {
+  if (!out_client) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 
-  struct xrpc_client *c = malloc(sizeof(struct xrpc_client));
+  struct xrpc_client *client = malloc(sizeof(struct xrpc_client));
 
-  if (!c) return XRPC_INTERNAL_ERR_ALLOC;
+  if (!client) return XRPC_INTERNAL_ERR_ALLOC;
 
-  c->conn = NULL;
-  c->last_error = XRPC_SUCCESS;
-  c->next_reqid = 1;
-  c->status = XRPC_CLIENT_DISCONNECTED;
-  memset(c->server_name, 0, sizeof(c->server_name));
+  client->conn = NULL;
+  client->last_error = XRPC_SUCCESS;
+  client->next_reqid = 1;
+  client->status = XRPC_CLIENT_DISCONNECTED;
+  memset(client->server_name, 0, sizeof(client->server_name));
 
-  *cli = c;
+  *out_client = client;
   return XRPC_SUCCESS;
 }
 
@@ -176,11 +177,9 @@ int xrpc_client_connect(struct xrpc_client *cli,
  */
 int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
                           const void *request_data, size_t request_size,
-                          struct xrpc_response **response) {
+                          struct xrpc_response **out_resp) {
 
-  if (!cli || !response) return XRPC_CLIENT_ERR_INVALID_CONFIG;
-
-  *response = NULL; // Initialize output parameter
+  if (!cli || !out_resp) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 
   // Check client state
   if (cli->status != XRPC_CLIENT_CONNECTED || !cli->conn) {
@@ -188,16 +187,23 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
     return XRPC_CLIENT_ERR_NOT_CONNECTED;
   }
 
+  // Convenies variable to avoid ugly &(*response-><field>)
+  struct xrpc_response *resp = NULL;
+
   // Prepare request header
   struct xrpc_request_header req_hdr = {
-      .reqid = __atomic_fetch_add(&cli->next_reqid, 1, __ATOMIC_ACQ_REL),
-      .op = op,
-      .sz = (uint32_t)request_size};
+      .request_id = __atomic_fetch_add(&cli->next_reqid, 1, __ATOMIC_ACQ_REL),
+      .operation_id = op,
+      .payload_size = (uint32_t)request_size};
 
+  // Received response header
+  struct xrpc_response_header resp_hdr = {0};
   int ret;
 
   XRPC_DEBUG_PRINT("sending request: op=%u, size=%zu, reqid=%lu", op,
-                   request_size, req_hdr.reqid);
+                   request_size, req_hdr.request_id);
+  // init out_resp = NULL so that if we fail the user will always read NULL.
+  *out_resp = NULL;
 
   // Send request header
   ret = send_exact_n(cli->conn, &req_hdr, sizeof(struct xrpc_request_header));
@@ -209,7 +215,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
   }
 
   // Send request body if present
-  if (request_size > 0 && request_data) {
+  if (request_size > 0) {
     ret = send_exact_n(cli->conn, request_data, request_size);
     if (ret != XRPC_SUCCESS) {
       cli->last_error = ret;
@@ -219,8 +225,6 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
     }
   }
 
-  // Receive response header
-  struct xrpc_response_header resp_hdr = {0};
   ret = recv_exact_n(cli->conn, &resp_hdr, sizeof(struct xrpc_response_header));
   if (ret != XRPC_SUCCESS) {
     cli->last_error = ret;
@@ -230,41 +234,42 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
   }
 
   // Validate response header
-  if (resp_hdr.reqid != req_hdr.reqid) {
+  if (resp_hdr.request_id != req_hdr.request_id) {
     cli->last_error = XRPC_CLIENT_ERR_PROTOCOL;
     cli->status = XRPC_CLIENT_ERROR;
     XRPC_DEBUG_PRINT("request ID mismatch: sent=%lu, received=%lu",
-                     req_hdr.reqid, resp_hdr.reqid);
+                     req_hdr.request_id, resp_hdr.request_id);
     return XRPC_CLIENT_ERR_PROTOCOL;
   }
 
-  if (resp_hdr.op != req_hdr.op) {
+  if (resp_hdr.operation_id != req_hdr.operation_id) {
     cli->last_error = XRPC_CLIENT_ERR_PROTOCOL;
     cli->status = XRPC_CLIENT_ERROR;
-    XRPC_DEBUG_PRINT("operation ID mismatch: sent=%u, received=%u", req_hdr.op,
-                     resp_hdr.op);
+    XRPC_DEBUG_PRINT("operation ID mismatch: sent=%u, received=%u",
+                     req_hdr.operation_id, resp_hdr.operation_id);
     return XRPC_CLIENT_ERR_PROTOCOL;
   }
 
-  // Allocate response structure
-  size_t total_size = sizeof(struct xrpc_response) + resp_hdr.sz;
-  struct xrpc_response *resp = malloc(total_size);
+  /*
+   * Setup the response structure.
+   * - Alloc the correct amount of memory for the response
+   * - Copy the header in the response
+   * - Read the body if any
+   */
+  resp = malloc(XRPC_RESPONSE_MSG_SIZE(resp_hdr.payload_size));
+
   if (!resp) {
     cli->last_error = XRPC_INTERNAL_ERR_ALLOC;
     cli->status = XRPC_CLIENT_ERROR;
     return XRPC_INTERNAL_ERR_ALLOC;
   }
 
-  // Set up response structure
-  resp->hdr = (struct xrpc_response_header *)((uint8_t *)resp +
-                                              sizeof(struct xrpc_response));
-  memcpy(resp->hdr, &resp_hdr, sizeof(struct xrpc_response_header));
-
-  if (resp_hdr.sz > 0) {
-    resp->data = (uint8_t *)resp->hdr + sizeof(struct xrpc_response_header);
+  // Copy the header in the response
+  memcpy(&resp->hdr, &resp_hdr, sizeof(struct xrpc_response_header));
+  if (resp_hdr.payload_size > 0) {
 
     // Receive response body
-    ret = recv_exact_n(cli->conn, resp->data, resp_hdr.sz);
+    ret = recv_exact_n(cli->conn, &resp->payload, resp_hdr.payload_size);
     if (ret != XRPC_SUCCESS) {
       cli->last_error = ret;
       cli->status = XRPC_CLIENT_ERROR;
@@ -272,15 +277,13 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
       XRPC_DEBUG_PRINT("failed to receive response body: %d", ret);
       return ret;
     }
-  } else {
-    resp->data = NULL;
   }
 
+  *out_resp = resp;
   cli->last_error = XRPC_SUCCESS;
-  *response = resp;
 
   XRPC_DEBUG_PRINT("request completed successfully: status=%u, size=%u",
-                   resp_hdr.status, resp_hdr.sz);
+                   resp_hdr.status, resp_hdr.payload_size);
   return XRPC_SUCCESS;
 }
 

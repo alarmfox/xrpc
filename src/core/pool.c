@@ -19,45 +19,45 @@
  * @return XRPC_INTERNAL_ERR_POOL_INVALID_ARG if max len is zero or elem_size is
  * zero
  */
-int xrpc_pool_init(struct xrpc_pool **p, const size_t max_len,
+int xrpc_pool_init(struct xrpc_pool **out_pool, const size_t max_len,
                    const size_t elem_size) {
 
-  if (max_len == 0 || elem_size == 0 || !p)
+  if (max_len == 0 || elem_size == 0 || !out_pool)
     return XRPC_INTERNAL_ERR_POOL_INVALID_ARG;
 
-  struct xrpc_pool *_p = NULL;
+  struct xrpc_pool *pool = NULL;
   uint8_t *tmp = NULL;
 
-  _p = malloc(sizeof(struct xrpc_pool));
-  if (!_p) return XRPC_INTERNAL_ERR_ALLOC;
+  pool = malloc(sizeof(struct xrpc_pool));
+  if (!pool) return XRPC_INTERNAL_ERR_ALLOC;
 
-  _p->elem_size = align_size(CACHE_LINE_SIZE, elem_size);
-  _p->capacity = max_len;
-  _p->items = aligned_alloc(CACHE_LINE_SIZE, _p->elem_size * max_len);
+  pool->elem_size = align_size(CACHE_LINE_SIZE, elem_size);
+  pool->capacity = max_len;
+  pool->items = aligned_alloc(CACHE_LINE_SIZE, pool->elem_size * max_len);
 
-  if (!_p->items) return XRPC_INTERNAL_ERR_ALLOC;
+  if (!pool->items) return XRPC_INTERNAL_ERR_ALLOC;
 
   // zero out the pool
-  memset(_p->items, 0, _p->elem_size * max_len);
+  memset(pool->items, 0, pool->elem_size * max_len);
 
   // init the free list
-  _p->free_list = malloc(max_len * sizeof(void *));
+  pool->free_list = malloc(max_len * sizeof(void *));
 
-  if (!_p->free_list) return XRPC_INTERNAL_ERR_ALLOC;
+  if (!pool->free_list) return XRPC_INTERNAL_ERR_ALLOC;
 
-  memset(_p->free_list, 0, max_len * sizeof(void *));
+  memset(pool->free_list, 0, max_len * sizeof(void *));
 
   // load all address in the free list since everything is free at the beginning
-  tmp = (uint8_t *)_p->items;
-  for (size_t i = 0; i < _p->capacity; ++i) {
-    _p->free_list[i] = (void *)tmp;
-    tmp += _p->elem_size;
+  tmp = (uint8_t *)pool->items;
+  for (size_t i = 0; i < pool->capacity; ++i) {
+    pool->free_list[i] = (void *)tmp;
+    tmp += pool->elem_size;
   }
 
   // initialize the free count as atomic variable
-  __atomic_store_n(&_p->free_count, _p->capacity, __ATOMIC_SEQ_CST);
+  __atomic_store_n(&pool->free_count, pool->capacity, __ATOMIC_SEQ_CST);
 
-  *p = _p;
+  *out_pool = pool;
 
   return XRPC_SUCCESS;
 }
