@@ -3,6 +3,64 @@
 
 #include <arpa/inet.h>
 #include <stdint.h>
+#include <string.h>
+
+#include "xrpc/error.h"
+
+#define XRPC_PROTO_VERSION 0x0
+
+/* dtype */
+enum xrpc_dtype {
+  XRPC_DTYPE_UINT8 = 1,
+  XRPC_DTYPE_INT32 = 2,
+  XRPC_DTYPE_INT64 = 3,
+  XRPC_DTYPE_FLOAT32 = 4,
+  XRPC_DTYPE_FLOAT64 = 5,
+};
+
+/* category values (choose numbers to match your spec) */
+enum {
+  XRPC_DTYPE_CAT_SCALAR = 1,
+  XRPC_DTYPE_CAT_ARRAY = 2,
+  XRPC_DTYPE_CAT_TENSOR = 3,
+  XRPC_DTYPE_CAT_MATRIX = 4,
+};
+
+/* element base types (same as your earlier enum xrpc_dtype) */
+enum {
+  XRPC_BASE_UINT8 = 1,
+  XRPC_BASE_INT32 = 2,
+  XRPC_BASE_INT64 = 3,
+  XRPC_BASE_FLOAT32 = 4,
+  XRPC_BASE_FLOAT64 = 5,
+};
+/**
+ * @brief RPC request header
+ *
+ * Before sending the requests, the client will send the header containing the
+ * selected operation and the size of the request.
+ *
+ *  4bit 4bit   8 bit          16 bit
+ * +----+----+----+-----+----+----+----+-----+
+ * |VER |TYPE|   DTYPE  |     BATCH SIZE     | (32 bit)
+ * +----+----+----+-----+----+----+----+-----+
+ * +----+----+----+-----+----+----+----+-----+
+ * |    OPERATION ID    |    PAYLOAD SIZE    | (32 bit)
+ * +----+----+----+-----+----+----+----+-----+
+ * +----+----+----+-----+----+----+----+-----+
+ * |               REQUEST ID                | (32 bit)
+ * +----+----+----+-----+----+----+----+-----+
+ *
+ */
+struct xrpc_request_header {
+  uint8_t proto_version; /* Protocol Version */
+  uint8_t msg_type;      /* Message type */
+  uint8_t data_type;     /* Data type of the numbers */
+  uint16_t batch_size;   /* Batch size */
+  uint16_t operation_id; /* Operation ID */
+  uint16_t payload_size; /* Size of the payload */
+  uint32_t request_id;   /* Request identifier */
+};
 
 // Response status flags
 enum xrpc_response_status {
@@ -11,40 +69,37 @@ enum xrpc_response_status {
   XRPC_RESPONSE_UNSUPPORTED_HANDLER = 1 << 2,
   XRPC_RESPONSE_INVALID_PARAMS = 1 << 3,
 };
-
-/**
- * @brief RPC request header
+/*
+ * @brief RPC response header
  *
- * Before sending the requests, the client will send the header containng the
- * selected operation and the size of the request.
+ *  4bit 4bit   8 bit          16 bit
+ * +----+----+----+-----+----+----+----+-----+
+ * |VER |RSV |  DTYPE   |    OPERATION ID    | (32 bit)
+ * +----+----+----+-----+----+----+----+-----+
+ * +----+----+----+-----+----+----+----+-----+
+ * |      STATUS        |    PAYLOAD SIZE    | (32 bit)
+ * +----+----+----+-----+----+----+----+-----+
+ * +----+----+----+-----+----+----+----+-----+
+ * |               REQUEST ID                | (32 bit)
+ * +----+----+----+-----+----+----+----+-----+
  *
  */
-struct __attribute__((packed)) xrpc_request_header {
-  uint32_t operation_id; /* Operation ID */
-  uint32_t payload_size; /* Size of the payload */
+struct xrpc_response_header {
+  uint8_t proto_version; /* Protocol Version */
+  uint8_t data_type;     /* Data type of the numbers */
+  uint16_t operation_id; /* Operation ID */
+  uint16_t status;       /* Status ID */
+  uint16_t payload_size; /* Size of the payload */
   uint64_t request_id;   /* Request identifier */
 };
 
 /*
- * @brief RPC response header
- *
- * Before sending the response, the server will send the header containng the
- * selected operation and the size of the request and a byte status.
- */
-struct __attribute__((packed)) xrpc_response_header {
-  uint32_t operation_id; /* Operation ID*/
-  uint32_t payload_size; /* Size of the payload */
-  uint64_t request_id;   /* Request identifier */
-  uint8_t status;        /* Status byte */
-};
-
-/**
  * @brief An incoming RPC request.
  *
  * The server provides a pointer to the request data. The handler is assumed to
  * not modify the request. It contains a prefixed struct xrpc_request_header.
  *
- * */
+ */
 struct xrpc_request {
   struct xrpc_request_header *hdr; /* Header of the request */
   const uint8_t *payload;          /* Pointer to request payload */
@@ -58,7 +113,7 @@ struct xrpc_request {
  * data (up to hdr->sz) and updating the hdr->sz with the actual bytes
  * number of response.
  */
-struct __attribute__((packed)) xrpc_response {
+struct xrpc_response {
   struct xrpc_response_header *hdr; /* Header of the request */
   uint8_t *payload;                 /* Buffer for writing response data */
 };
@@ -94,28 +149,36 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
 # define xrpc_ntoh64(x) (x)
 #endif
 
-/* Convenience inline helpers to convert header fields to/from network order */
-static inline void xrpc_request_header_to_net(struct xrpc_request_header *h) {
-  h->operation_id = htonl(h->operation_id);
-  h->payload_size = htonl(h->payload_size);
-  h->request_id = xrpc_hton64(h->request_id);
-}
-static inline void xrpc_request_header_from_net(struct xrpc_request_header *h) {
-  h->operation_id = ntohl(h->operation_id);
-  h->payload_size = ntohl(h->payload_size);
-  h->request_id = xrpc_ntoh64(h->request_id);
+
+static inline int xrpc_serialize_request(const struct xrpc_request *r, uint8_t *buf, size_t len) {
+  if(len < sizeof(struct xrpc_request_header) + r->hdr->payload_size) return XRPC_API_ERR_SERIALIZATION;
+
+  // serialize the header
+
+  // concatenate proto_version and msg_type
+  uint8_t msg_ver = ((r->hdr->proto_version & 0xF) <<  4) | (r->hdr->msg_type & 0xF);
+
+  uint16_t batch_size = htons(r->hdr->batch_size);
+  uint16_t operation_id = htons(r->hdr->operation_id);
+  uint16_t payload_size= htons(r->hdr->payload_size);
+  uint32_t request_id= htonl(r->hdr->request_id);
+
+  // serialize first word
+  buf[0]= msg_ver;
+  buf[1] = r->hdr->data_type;
+  memcpy(buf + 2, &batch_size, 2);
+
+  // serialize the second word
+  memcpy(buf + 4, &operation_id, 2);
+  memcpy(buf + 6, &payload_size, 2);
+
+  // serialize the third word
+  memcpy(buf + 8, &request_id, 4);
+
+
+  // Serialize
+
+  return XRPC_SUCCESS;
 }
 
-static inline void xrpc_response_header_to_net(struct xrpc_response_header *h) {
-  h->operation_id = htonl(h->operation_id);
-  h->payload_size = htonl(h->payload_size);
-  h->request_id = xrpc_hton64(h->request_id);
-  h->status = htonl(h->status);
-}
-static inline void xrpc_response_header_from_net(struct xrpc_response_header *h) {
-  h->operation_id = ntohl(h->operation_id);
-  h->payload_size = ntohl(h->payload_size);
-  h->request_id = xrpc_ntoh64(h->request_id);
-  h->status = ntohl(h->status);
-}
 #endif // !XRPC_PROTOCOL_H

@@ -18,6 +18,9 @@
 #define XRPC_API_ERR_HANDLER_ALREADY_REGISTERED -3
 #define XRPC_API_ERR_INVALID_ARGS -5
 #define XRPC_API_ERR_INVALID_TRANSPORT -6
+#define XRPC_API_ERR_SERIALIZATION -7
+#define XRPC_API_ERR_OVERFLOW -8
+#define XRPC_API_ERR_UNSUPPORTED_DTYPE -9
 
 /*
  * Transport related errors. These can be return from connection oriented

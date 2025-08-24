@@ -12,7 +12,7 @@
 #include "xrpc/xrpc.h"
 
 #define MAX_HANDLERS 64
-#define MAX_REQUEST_SIZE (1024 * 1024) // 1M
+#define MAX_REQUEST_SIZE (1024 * 32) // 32K
 
 struct xrpc_request_context {
   enum state {
