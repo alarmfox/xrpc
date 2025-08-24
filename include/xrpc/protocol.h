@@ -2,65 +2,119 @@
 #define XRPC_PROTOCOL_H
 
 #include <arpa/inet.h>
+#include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "xrpc/error.h"
 
+// clang-format off
+/*
+ * NOTE: although the protocol specifies batch, it just implemented one
+ * operation for now. So the server implementation always assumes batch_size
+ * = 1.
+ */
 #define XRPC_PROTO_VERSION 0x0
 
-/* dtype */
-enum xrpc_dtype {
-  XRPC_DTYPE_UINT8 = 1,
-  XRPC_DTYPE_INT32 = 2,
-  XRPC_DTYPE_INT64 = 3,
-  XRPC_DTYPE_FLOAT32 = 4,
-  XRPC_DTYPE_FLOAT64 = 5,
+enum xrpc_message_type {
+  XRPC_MSG_TYPE_REQ = 1,
+  XRPC_MSG_TYPE_INFO = 2,
+  XRPC_MSG_TYPE_PING = 3,
 };
 
-/* category values (choose numbers to match your spec) */
-enum {
-  XRPC_DTYPE_CAT_SCALAR = 1,
-  XRPC_DTYPE_CAT_ARRAY = 2,
-  XRPC_DTYPE_CAT_TENSOR = 3,
-  XRPC_DTYPE_CAT_MATRIX = 4,
-};
-
-/* element base types (same as your earlier enum xrpc_dtype) */
-enum {
-  XRPC_BASE_UINT8 = 1,
-  XRPC_BASE_INT32 = 2,
-  XRPC_BASE_INT64 = 3,
-  XRPC_BASE_FLOAT32 = 4,
-  XRPC_BASE_FLOAT64 = 5,
-};
-/**
+/*
  * @brief RPC request header
  *
  * Before sending the requests, the client will send the header containing the
- * selected operation and the size of the request.
+ * selected operation and the size of the request. The protocol supports
+ * `batching`. A batch is a sequence of operations that the client
+ * requests to the server exchanging one header and sending bulk data receiving
+ * response asyncrously. After a request header there will be `batch_size`
+ * frames. Each frame will have a prefixed size header.
+ *
+ * * VER (4 bit): protocol version number
+ * * TYPE (4 bit): message type can be one of `xrpc_message_type`
+ * * RESP MODE (8 bit): indicates how the server should behaves. Reserved for
+ * future use. The idea is to use this field to specify how the server should
+ * behave if a request fails (ignore, abort all the batch, ecc)
+ * * BATCH SIZE (16 bit): number of operation to be performed
+ * * BATCH ID (16 bit): identifier of the batch
+ * * RESERVED (16 bit): must be zero
  *
  *  4bit 4bit   8 bit          16 bit
- * +----+----+----+-----+----+----+----+-----+
- * |VER |TYPE|   DTYPE  |     BATCH SIZE     | (32 bit)
- * +----+----+----+-----+----+----+----+-----+
- * +----+----+----+-----+----+----+----+-----+
- * |    OPERATION ID    |    PAYLOAD SIZE    | (32 bit)
- * +----+----+----+-----+----+----+----+-----+
- * +----+----+----+-----+----+----+----+-----+
- * |               REQUEST ID                | (32 bit)
- * +----+----+----+-----+----+----+----+-----+
+ * +----+----+----+----+----+----+----+----+
+ * |VER |TYPE|RESP MODE|     BATCH SIZE    | (32 bit)
+ * +----+----+----+----+----+----+----+----+
+ * +----+----+----+----+----+----+----+----+
+ * |      BATCH ID     |      RESERVED     | (32 bit)
+ * +----+----+----+----+----+----+----+----+
  *
  */
 struct xrpc_request_header {
-  uint8_t proto_version; /* Protocol Version */
-  uint8_t msg_type;      /* Message type */
-  uint8_t data_type;     /* Data type of the numbers */
+  uint8_t preamble;      /* Protocol version and message type*/
+  uint8_t resp_mode;     /* Response mode */
   uint16_t batch_size;   /* Batch size */
-  uint16_t operation_id; /* Operation ID */
-  uint16_t payload_size; /* Size of the payload */
-  uint32_t request_id;   /* Request identifier */
+  uint16_t batch_id;     /* Batch identifier */
+  uint16_t reserved;     /* Reserved. Must be 0*/
 };
+
+/* Compile-time check that the struct is the expected size */
+static_assert(sizeof(struct xrpc_request_header) == 8, 
+              "Request header must be exactly 8 bytes");
+
+/* category values */
+enum xrpc_dtype_category {
+  XRPC_DTYPE_CAT_ARRAY = 0,
+  XRPC_DTYPE_CAT_MATRIX = 1,
+  XRPC_DTYPE_CAT_TENSOR = 2,
+};
+
+/* element base types */
+enum xrpc_dtype_base {
+  XRPC_BASE_UINT8 = 0,
+  XRPC_BASE_INT32 = 1,
+  XRPC_BASE_INT64 = 2,
+  XRPC_BASE_FLOAT32 = 3,
+  XRPC_BASE_FLOAT64 = 4,
+};
+
+/*
+ * @brief XRPC frame header
+ *
+ * A frame header describes an operation that the server should do along with
+ * its input data. This frame depends on the `dtype` field of the original
+ * request.
+ * * OPCODE (6 bit): id of the function to be invoked;
+ * * SCALE (4 bit): number to scale the matrix/vector dimension;
+ * * DTYPB (4 bit): data type base. One of `xrpc_dtype_base`
+ * * DC (2 bit): data type category. One of `xrpc_dtype_category`
+ * * SIZE PARAMS (14 bit):
+ *     - DC = XRPC_DTYPE_CAT_SCALAR: it must be 1;
+ *     - DC = XRPC_DTYPE_CAT_VECTOR: represents the size of the
+ * array;
+ *     - DC = XRPC_DTYPE_CAT_MATRIX: left 8 bits represent rows and right 8
+ * bits represent cols
+ *
+ *   6 bit 4bit  6 bit         16 bit
+ * +----+----+----+-----+----+----+----+-----+
+ * |OPCOD|SCALE|DTYPB|DC|     SIZE PARAMS    |  (32 bit)
+ * +----+----+----+-----+----+----+----+-----+
+ * +----+----+----+-----+----+----+----+-----+
+ * |      BATCH_ID      |      FRAME ID      |  (32 bit)
+ * +----+----+----+-----+----+----+----+-----+
+ * +----+----+----+-----+----+----+----+-----+
+ * |               FRAME DATA                | (NARG * sizeof(DTYPB) * <params_size> ^ scale)
+ * +----+----+----+-----+----+----+----+-----+
+ */
+struct xrpc_frame_header {
+  uint8_t opinfo;        /* Operation ID, scale, data type base and data type category*/
+  uint16_t size_params; /*  Dimension of the params based on dtype */
+  uint16_t batch_id ;   /*  Batch ID */
+  uint16_t frame_id;    /*  Frame identifier */
+};
+/* Compile-time check that the struct is the expected size */
+static_assert(sizeof(struct xrpc_frame_header) == 8, 
+              "Frame header must be exactly 8 bytes");
 
 // Response status flags
 enum xrpc_response_status {
@@ -69,67 +123,36 @@ enum xrpc_response_status {
   XRPC_RESPONSE_UNSUPPORTED_HANDLER = 1 << 2,
   XRPC_RESPONSE_INVALID_PARAMS = 1 << 3,
 };
+
 /*
  * @brief RPC response header
  *
- *  4bit 4bit   8 bit          16 bit
- * +----+----+----+-----+----+----+----+-----+
- * |VER |RSV |  DTYPE   |    OPERATION ID    | (32 bit)
- * +----+----+----+-----+----+----+----+-----+
- * +----+----+----+-----+----+----+----+-----+
- * |      STATUS        |    PAYLOAD SIZE    | (32 bit)
- * +----+----+----+-----+----+----+----+-----+
- * +----+----+----+-----+----+----+----+-----+
- * |               REQUEST ID                | (32 bit)
- * +----+----+----+-----+----+----+----+-----+
+ * Reports the status of the specified `batch_id`.
+ *
+ *  4bit     12 bit          16 bit
+ * +----+----+----+----+----+----+----+----+
+ * |VER |      RSV     |      BATCH ID     | (32 bit)
+ * +----+----+----+----+----+----+----+----+
+ * +----+----+----+----+----+----+----+----+
+ * |       STATUS      |    PAYLOAD SIZE   | (32 bit)
+ * +----+----+----+----+----+----+----+----+
  *
  */
 struct xrpc_response_header {
-  uint8_t proto_version; /* Protocol Version */
-  uint8_t data_type;     /* Data type of the numbers */
-  uint16_t operation_id; /* Operation ID */
+  uint16_t preamble;     /* Protocol Version */
+  uint16_t batch_id;     /* Operation ID */
   uint16_t status;       /* Status ID */
   uint16_t payload_size; /* Size of the payload */
-  uint64_t request_id;   /* Request identifier */
 };
-
-/*
- * @brief An incoming RPC request.
- *
- * The server provides a pointer to the request data. The handler is assumed to
- * not modify the request. It contains a prefixed struct xrpc_request_header.
- *
- */
-struct xrpc_request {
-  struct xrpc_request_header *hdr; /* Header of the request */
-  const uint8_t *payload;          /* Pointer to request payload */
-};
-
-/**
- * @brief An outgoing RPC response.
- *
- * The server provides a pointer to the request data and a buffer for the
- * handler to write its response. The handler is responsible for filling in the
- * data (up to hdr->sz) and updating the hdr->sz with the actual bytes
- * number of response.
- */
-struct xrpc_response {
-  struct xrpc_response_header *hdr; /* Header of the request */
-  uint8_t *payload;                 /* Buffer for writing response data */
-};
-
-/* Helper macros */
-#define XRPC_REQUEST_MSG_SIZE(payload_len)                                     \
-  (sizeof(struct xrpc_request_header) + (size_t)(payload_len))
-#define XRPC_RESPONSE_MSG_SIZE(payload_len)                                    \
-  (sizeof(struct xrpc_response_header) + (size_t)(payload_len))
+/* Compile-time check that the struct is the expected size */
+static_assert(sizeof(struct xrpc_response_header) == 8, 
+              "Response header must be exactly 8 bytes");
 
 /* Endianness helpers (simple portable 64-bit swap) */
 static inline uint64_t xrpc_bswap64(uint64_t x) {
 #if defined(__GNUC__) || defined(__clang__)
   return __builtin_bswap64(x);
 #else
-  // clang-format off
   return ((x & 0xffULL) << 56) |
          ((x & 0xff00ULL) << 40) |
          ((x & 0xff0000ULL) << 24) |
@@ -148,37 +171,3 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
 # define xrpc_hton64(x) (x)
 # define xrpc_ntoh64(x) (x)
 #endif
-
-
-static inline int xrpc_serialize_request(const struct xrpc_request *r, uint8_t *buf, size_t len) {
-  if(len < sizeof(struct xrpc_request_header) + r->hdr->payload_size) return XRPC_API_ERR_SERIALIZATION;
-
-  // serialize the header
-
-  // concatenate proto_version and msg_type
-  uint8_t msg_ver = ((r->hdr->proto_version & 0xF) <<  4) | (r->hdr->msg_type & 0xF);
-
-  uint16_t batch_size = htons(r->hdr->batch_size);
-  uint16_t operation_id = htons(r->hdr->operation_id);
-  uint16_t payload_size= htons(r->hdr->payload_size);
-  uint32_t request_id= htonl(r->hdr->request_id);
-
-  // serialize first word
-  buf[0]= msg_ver;
-  buf[1] = r->hdr->data_type;
-  memcpy(buf + 2, &batch_size, 2);
-
-  // serialize the second word
-  memcpy(buf + 4, &operation_id, 2);
-  memcpy(buf + 6, &payload_size, 2);
-
-  // serialize the third word
-  memcpy(buf + 8, &request_id, 4);
-
-
-  // Serialize
-
-  return XRPC_SUCCESS;
-}
-
-#endif // !XRPC_PROTOCOL_H
