@@ -66,7 +66,7 @@ static_assert(sizeof(struct xrpc_request_header) == 8,
 
 /* category values */
 enum xrpc_dtype_category {
-  XRPC_DTYPE_CAT_ARRAY = 0,
+  XRPC_DTYPE_CAT_VECTOR = 0,
   XRPC_DTYPE_CAT_MATRIX = 1,
   XRPC_DTYPE_CAT_TENSOR = 2,
 };
@@ -116,7 +116,7 @@ enum xrpc_dtype_base {
  * +----+----+----+-----+----+----+----+-----+
  */
 struct xrpc_request_frame_header {
-  uint8_t  opinfo; /* Operation ID, scale, data type base and data type category*/
+  uint16_t  opinfo; /* Operation ID, scale, data type base and data type category*/
   uint16_t size_params; /*  Dimension of the params based on dtype */
   uint16_t batch_id;    /*  Batch ID */
   uint16_t frame_id;    /*  Frame identifier */
@@ -201,22 +201,35 @@ enum xrpc_fr_resp_status {
  * +----+----+----+-----+----+----+----+-----+
  */
 struct xrpc_response_frame_header {
-  uint8_t  opinfo; /* Operation ID, scale, data type base and data type category*/
+  uint16_t  opinfo; /* Operation ID, scale, data type base and data type category*/
   uint16_t size_params; /*  Dimension of the params based on dtype */
   uint16_t batch_id;    /*  Batch ID */
   uint16_t frame_id;    /*  Frame identifier */
 };
 
-static inline size_t xrpc_dtypb_size(enum xrpc_dtype_base dtb) {
-  switch(dtb) {
+static inline size_t xrpc_dtypb_size(enum xrpc_dtype_base dtyb) {
+  switch(dtyb) {
     case XRPC_BASE_UINT8:
     case XRPC_BASE_INT8:
       return 1;
-    case XRPC_BASE_FLOAT32:
-    case XRPC_BASE_INT32:
+    case XRPC_BASE_INT16:
+    case XRPC_BASE_UINT16:
+      return 2;
     case XRPC_BASE_UINT32:
+    case XRPC_BASE_INT32:
+    case XRPC_BASE_FLOAT32:
+    case XRPC_BASE_DOUBLE32:
+      return 4;
+    case XRPC_BASE_UINT64:
+    case XRPC_BASE_INT64:
+    case XRPC_BASE_FLOAT64:
+    case XRPC_BASE_DOUBLE64:
+      return 8;
   }
+
+  return XRPC_PROTO_ERR_INVALID_DTYPE;
 }
+
 /* Endianness helpers (simple portable 64-bit swap) */
 static inline uint64_t xrpc_bswap64(uint64_t x) {
 #if defined(__GNUC__) || defined(__clang__)
@@ -287,6 +300,9 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
 #define XRPC_REQ_FR_WORD1_SIZE_PARAMS(word1)                                   \
   (uint16_t)(((uint32_t)(word1)) & 0xFFFFu)
 
+#define XRPC_REQ_FR_DTYPB(opinfo) (uint8_t)(((uint16_t)(opinfo) >> 2) & 0x3Fu)
+#define XRPC_REQ_FR_DTYPC(opinfo) (uint8_t)(((uint16_t)(opinfo)) & 0x03u)
+
 #define XRPC_REQ_FR_WORD2_BATCH_ID(word2)                                      \
   (uint16_t)(((uint32_t)(word2) >> 16) & 0xFFFFu)
 
@@ -312,7 +328,86 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
 
 #define XRPC_RES_FR_WORD2_FRAME_ID(word2)                                      \
   (uint16_t)(((uint32_t)(word2)) & 0xFFFFu)
-/* Serialize request header into 8-byte wire buffer (network-order fields) */
+
+/*
+ * Utils to get and set fields from requests and response
+ *
+ * Bit layout of opinfo (LSB..MSB):
+ *  bits  0-1 : DC (2 bits)
+ *  bits  2-5 : DTYPB (4 bits)
+ *  bits  6-9 : SCALE (4 bits)
+ *  bits 10-15: OPCODE (6 bits)
+ */
+
+#define XRPC_REQ_FR_DTYPC_SHIFT 0
+#define XRPC_REQ_FR_DTYPC_MASK 0x03u
+
+#define XRPC_REQ_FR_DTYPB_SHIFT 2
+#define XRPC_REQ_FR_DTYPB_MASK 0x0Fu
+
+#define XRPC_REQ_FR_SCALE_SHIFT 6
+#define XRPC_REQ_FR_SCALE_MASK 0x0Fu
+
+#define XRPC_REQ_FR_OPCODE_SHIFT 10
+#define XRPC_REQ_FR_OPCODE_MASK 0x3Fu
+
+/* getters (hdr may be an lvalue expression producing a struct/union) */
+#define XRPC_REQ_FR_GET_DTYPC(hdr)                                             \
+  (uint8_t)((((uint16_t)((hdr).opinfo)) >> XRPC_REQ_FR_DTYPC_SHIFT) &          \
+            XRPC_REQ_FR_DTYPC_MASK)
+
+#define XRPC_REQ_FR_GET_DTYPB(hdr)                                             \
+  (uint8_t)((((uint16_t)((hdr).opinfo)) >> XRPC_REQ_FR_DTYPB_SHIFT) &          \
+            XRPC_REQ_FR_DTYPB_MASK)
+
+#define XRPC_REQ_FR_GET_SCALE(hdr)                                             \
+  (uint8_t)((((uint16_t)((hdr).opinfo)) >> XRPC_REQ_FR_SCALE_SHIFT) &          \
+            XRPC_REQ_FR_SCALE_MASK)
+
+#define XRPC_REQ_FR_GET_OPCODE(hdr)                                            \
+  (uint8_t)((((uint16_t)((hdr).opinfo)) >> XRPC_REQ_FR_OPCODE_SHIFT) &         \
+            XRPC_REQ_FR_OPCODE_MASK)
+
+/* setters clear the existing bits then OR the new value in */
+#define XRPC_REQ_FR_SET_DTYPC(hdr, dtypc)                                      \
+  do {                                                                         \
+    (hdr).opinfo = (uint16_t)(((uint16_t)(hdr).opinfo) &                       \
+                              ~((uint16_t)(XRPC_REQ_FR_DTYPC_MASK              \
+                                           << XRPC_REQ_FR_DTYPC_SHIFT)));      \
+    (hdr).opinfo |= (uint16_t)((((uint16_t)(dtypc)) & XRPC_REQ_FR_DTYPC_MASK)  \
+                               << XRPC_REQ_FR_DTYPC_SHIFT);                    \
+  } while (0)
+
+#define XRPC_REQ_FR_SET_DTYPB(hdr, dtypb)                                      \
+  do {                                                                         \
+    (hdr).opinfo = (uint16_t)(((uint16_t)(hdr).opinfo) &                       \
+                              ~((uint16_t)(XRPC_REQ_FR_DTYPB_MASK              \
+                                           << XRPC_REQ_FR_DTYPB_SHIFT)));      \
+    (hdr).opinfo |= (uint16_t)((((uint16_t)(dtypb)) & XRPC_REQ_FR_DTYPB_MASK)  \
+                               << XRPC_REQ_FR_DTYPB_SHIFT);                    \
+  } while (0)
+
+#define XRPC_REQ_FR_SET_SCALE(hdr, scale)                                      \
+  do {                                                                         \
+    (hdr).opinfo = (uint16_t)(((uint16_t)(hdr).opinfo) &                       \
+                              ~((uint16_t)(XRPC_REQ_FR_SCALE_MASK              \
+                                           << XRPC_REQ_FR_SCALE_SHIFT)));      \
+    (hdr).opinfo |= (uint16_t)((((uint16_t)(scale)) & XRPC_REQ_FR_SCALE_MASK)  \
+                               << XRPC_REQ_FR_SCALE_SHIFT);                    \
+  } while (0)
+
+#define XRPC_REQ_FR_SET_OPCODE(hdr, opcode)                                    \
+  do {                                                                         \
+    (hdr).opinfo = (uint16_t)(((uint16_t)(hdr).opinfo) &                       \
+                              ~((uint16_t)(XRPC_REQ_FR_OPCODE_MASK             \
+                                           << XRPC_REQ_FR_OPCODE_SHIFT)));     \
+    (hdr).opinfo |=                                                            \
+        (uint16_t)((((uint16_t)(opcode)) & XRPC_REQ_FR_OPCODE_MASK)            \
+                   << XRPC_REQ_FR_OPCODE_SHIFT);                               \
+  } while (0)
+
+/* Serialize request header into 8-byte wire buffer (network-order fields)
+ */
 static inline void
 xrpc_request_header_to_net(const struct xrpc_request_header *r,
                            uint8_t buf[8]) {
@@ -373,11 +468,11 @@ static inline void
 xrpc_request_frame_header_from_net(const uint8_t buf[8],
                                    struct xrpc_request_frame_header *r) {
   uint32_t w1, w2;
-  memcpy(&w1, &buf, 4);
-  memcpy(&w2, &buf + 4, 4);
+  memcpy(&w1, buf, 4);
+  memcpy(&w2, buf + 4, 4);
 
-  w1 = htonl(w1);
-  w2 = htonl(w2);
+  w1 = ntohl(w1);
+  w2 = ntohl(w2);
 
   r->opinfo = XRPC_REQ_FR_WORD1_OPINFO(w1);
   r->size_params = XRPC_REQ_FR_WORD1_SIZE_PARAMS(w1);
@@ -408,11 +503,11 @@ static inline void
 xrpc_response_frame_header_from_net(const uint8_t buf[8],
                                     struct xrpc_response_frame_header *r) {
   uint32_t w1, w2;
-  memcpy(&w1, &buf, 4);
-  memcpy(&w2, &buf + 4, 4);
+  memcpy(&w1, buf, 4);
+  memcpy(&w2, buf + 4, 4);
 
-  w1 = htonl(w1);
-  w2 = htonl(w2);
+  w1 = ntohl(w1);
+  w2 = ntohl(w2);
 
   r->opinfo = XRPC_RES_FR_WORD1_OPINFO(w1);
   r->size_params = XRPC_RES_FR_WORD1_SIZE_PARAMS(w1);
@@ -421,13 +516,24 @@ xrpc_response_frame_header_from_net(const uint8_t buf[8],
 }
 
 /* Serialize a vector on the network (network-order) */
-static inline int xrpc_vector_to_net(const struct xrpc_request_header *r,
-                                     const void *data, uint8_t *buf, size_t len,
-                                     size_t *written) {
-  // sanity check
-  if (!r || !data || !buf || len == 0 || !written)
-    return XRPC_API_ERR_SERIALIZATION;
+int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
+                       const void *data, uint8_t *buf, size_t len,
+                       size_t *written);
+int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
+                         const uint8_t *buf, size_t buflen, void *data,
+                         size_t *read);
 
-  return XRPC_SUCCESS;
-}
+/*
+ * Wrapping type for header and body
+ */
+
+struct xrpc_request {
+  struct xrpc_request_frame_header *hdr;
+  const void *data;
+};
+
+struct xrpc_response {
+  struct xrpc_response_frame_header *hdr;
+  void *data;
+};
 #endif //! XRPC_PROTOCOL_H
