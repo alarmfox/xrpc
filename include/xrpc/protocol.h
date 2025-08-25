@@ -6,8 +6,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "xrpc/error.h"
-
 /*
  * Usage: the client negotiate a batch identifier with the server. A batch is a
  * sequence of operation that the server performs without renegoatiating
@@ -127,9 +125,9 @@ static_assert(sizeof(struct xrpc_request_frame_header) == 8,
               "Frame header must be exactly 8 bytes");
 
 enum xrpc_response_type {
-  XRPC_RESPONSE_BATCH_REPORT = 1,
-  XRPC_RESPONSE_BATCH_ERROR = 2,
-  XRPC_RESPONSE_BATCH_INIT = 3,
+  XRPC_RESP_STATUS_BATCH_INIT = 1,
+  XRPC_RESP_STATUS_BATCH_REPORT = 2,
+  XRPC_RESP_STATUS_ACK = 3,
 };
 
 /*
@@ -225,9 +223,9 @@ static inline size_t xrpc_dtypb_size(enum xrpc_dtype_base dtyb) {
     case XRPC_BASE_FLOAT64:
     case XRPC_BASE_DOUBLE64:
       return 8;
+    default:
+      return 0;
   }
-
-  return XRPC_PROTO_ERR_INVALID_DTYPE;
 }
 
 /* Endianness helpers (simple portable 64-bit swap) */
@@ -406,6 +404,42 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
                    << XRPC_REQ_FR_OPCODE_SHIFT);                               \
   } while (0)
 
+// Batch processing utilities
+static inline size_t
+xrpc_calculate_frame_data_size(const struct xrpc_request_frame_header *hdr) {
+
+  enum xrpc_dtype_base dtypb = XRPC_REQ_FR_GET_DTYPB(*hdr);
+  enum xrpc_dtype_category dtypc = XRPC_REQ_FR_GET_DTYPC(*hdr);
+  uint8_t scale = XRPC_REQ_FR_GET_SCALE(*hdr);
+
+  size_t base_size = xrpc_dtypb_size(dtypb);
+  if (base_size == 0) return 0;
+
+  size_t scaled_size = base_size;
+  for (uint8_t i = 0; i < scale; i++) {
+    scaled_size *= 2; // Each scale doubles the size
+  }
+
+  switch (dtypc) {
+  case XRPC_DTYPE_CAT_VECTOR:
+    return scaled_size * hdr->size_params;
+
+  case XRPC_DTYPE_CAT_MATRIX: {
+    // size_params encodes rows in upper 8 bits, cols in lower 8 bits
+    uint8_t rows = (hdr->size_params >> 8) & 0xFF;
+    uint8_t cols = hdr->size_params & 0xFF;
+    return scaled_size * rows * cols;
+  }
+
+  case XRPC_DTYPE_CAT_TENSOR:
+    // For tensor, size_params represents total number of elements
+    return scaled_size * hdr->size_params;
+
+  default:
+    return 0;
+  }
+}
+
 /* Serialize request header into 8-byte wire buffer (network-order fields)
  */
 static inline void
@@ -523,17 +557,4 @@ int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
                          const uint8_t *buf, size_t buflen, void *data,
                          size_t *read);
 
-/*
- * Wrapping type for header and body
- */
-
-struct xrpc_request {
-  struct xrpc_request_frame_header *hdr;
-  const void *data;
-};
-
-struct xrpc_response {
-  struct xrpc_response_frame_header *hdr;
-  void *data;
-};
 #endif //! XRPC_PROTOCOL_H
