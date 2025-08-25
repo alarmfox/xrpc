@@ -26,6 +26,7 @@
 
 #define XRPC_PROTO_ERR_INVALID_DTYPE -50
 #define XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS -51
+#define XRPC_PROTO_ERR_VERSION_MISMATCH -52
 
 /*
  * Transport related errors. These can be return from connection oriented

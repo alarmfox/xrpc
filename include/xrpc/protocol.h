@@ -37,7 +37,7 @@ enum xrpc_request_type {
  * * RESP MODE (8 bit): indicates how the server should behaves. Reserved for
  * future use. The idea is to use this field to specify how the server should
  * behave if a request fails (ignore, abort all the batch, ecc)
- * * BATCH ID (16 bit): identifier of the batch 
+ * * BATCH ID (16 bit): identifier of the batch
  * * BATCH SIZE (16 bit): number of operation to be performed
  * * RESERVED (16 bit): must be zero
  *
@@ -114,7 +114,7 @@ enum xrpc_dtype_base {
  * +----+----+----+-----+----+----+----+-----+
  */
 struct xrpc_request_frame_header {
-  uint16_t  opinfo; /* Operation ID, scale, data type base and data type category*/
+  uint16_t opinfo;      /* Operation ID, scale, data type base and data type category */
   uint16_t size_params; /*  Dimension of the params based on dtype */
   uint16_t batch_id;    /*  Batch ID */
   uint16_t frame_id;    /*  Frame identifier */
@@ -284,6 +284,28 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
 
 #define XRPC_REQ_WORD2_RESERVED(word2) (uint16_t)(((uint32_t)(word2)) & 0xFFFFu)
 
+#define XRPC_RES_WORD1_PACK(preamble_byte, batch_id)                           \
+  ((uint32_t)(((uint32_t)(preamble_byte) << 24) | ((uint32_t)(0x00) << 16) |   \
+              ((uint32_t)(batch_id) & 0xFFFFu)))
+
+#define XRPC_RES_WORD1_PREAMBLE(word1)                                         \
+  (uint8_t)((((uint32_t)(word1)) >> 24) & 0xFFu)
+
+#define XRPC_RES_WORD1_RESPMODE(word1)                                         \
+  (uint8_t)((((uint32_t)(word1)) >> 16) & 0xFFu)
+
+#define XRPC_RES_WORD1_BATCHID(word1) (uint16_t)(((uint32_t)(word1)) & 0xFFFFu)
+
+#define XRPC_RES_WORD2_PACK(status, payload_size)                              \
+  ((uint32_t)((((uint32_t)(status) & 0xFFFFu) << 16) |                         \
+              ((uint32_t)(payload_size) & 0xFFFFu)))
+
+#define XRPC_REQ_WORD2_STATUS(word2)                                           \
+  (uint16_t)((((uint32_t)(word2)) >> 16) & 0xFFFFu)
+
+#define XRPC_REQ_WORD2_PAYLOAD_SIZE(word2)                                     \
+  (uint16_t)(((uint32_t)(word2)) & 0xFFFFu)
+
 #define XRPC_REQ_FR_WORD1_PACK(opinfo, size_params)                            \
   (uint32_t)(((uint32_t)(opinfo & 0xFFFFu) << 16) |                            \
              (uint32_t)(size_params & 0xFFFFu))
@@ -328,13 +350,35 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
   (uint16_t)(((uint32_t)(word2)) & 0xFFFFu)
 
 /*
- * Utils to get and set fields from requests and response
+ * Utils to get and set fields from `xrpc_request_header`
  *
- * Bit layout of opinfo (LSB..MSB):
- *  bits  0-1 : DC (2 bits)
- *  bits  2-5 : DTYPB (4 bits)
- *  bits  6-9 : SCALE (4 bits)
- *  bits 10-15: OPCODE (6 bits)
+ * Bit layout of opinfo (MSB..LSB):
+ *  bits  11-8 : TYPE (4 bits)
+ *  bits  15-12: VER (4 bits)
+ */
+
+#define XRPC_REQ_TYPE_SHIFT 0
+#define XRPC_REQ_TYPE_MASK 0x0Fu
+
+#define XRPC_REQ_VER_SHIFT 4
+#define XRPC_REQ_VER_MASK 0x0Fu
+
+#define XRPC_REQ_GET_TYPE(hdr)                                                 \
+  (uint8_t)((((uint16_t)((hdr).preamble)) >> XRPC_REQ_TYPE_SHIFT) &            \
+            XRPC_REQ_TYPE_MASK)
+
+#define XRPC_REQ_GET_VER(hdr)                                                  \
+  (uint8_t)((((uint16_t)((hdr).preamble)) >> XRPC_REQ_VER_SHIFT) &             \
+            XRPC_REQ_VER_MASK)
+
+/*
+ * Utils to get and set fields from `xrpc_request_frame_header`
+ *
+ * Bit layout of opinfo (MSB..LSB):
+ *  bits  1-0 : DC (2 bits)
+ *  bits  5-2 : DTYPB (4 bits)
+ *  bits  9-6 : SCALE (4 bits)
+ *  bits  15-10: OPCODE (6 bits)
  */
 
 #define XRPC_REQ_FR_DTYPC_SHIFT 0
@@ -440,7 +484,8 @@ xrpc_calculate_frame_data_size(const struct xrpc_request_frame_header *hdr) {
   }
 }
 
-/* Serialize request header into 8-byte wire buffer (network-order fields)
+/*
+ * Serialize request header into 8-byte wire buffer (network-order fields)
  */
 static inline void
 xrpc_request_header_to_net(const struct xrpc_request_header *r,
@@ -477,6 +522,46 @@ static inline void xrpc_request_header_from_net(const uint8_t buf[8],
 
   r->batch_size = XRPC_REQ_WORD2_BATCHSIZE(w2);
   r->reserved = XRPC_REQ_WORD2_RESERVED(w2);
+}
+
+/*
+ * Serialize request header into 8-byte wire buffer (network-order fields)
+ */
+static inline void
+xrpc_response_header_to_net(const struct xrpc_response_header *r,
+                            uint8_t buf[8]) {
+
+  uint32_t w1 = XRPC_RES_WORD1_PACK(r->preamble, r->batch_id);
+  uint32_t w2 = XRPC_RES_WORD2_PACK(r->status, r->payload_size);
+
+  /* convert to network byte order */
+  w1 = htonl(w1);
+  w2 = htonl(w2);
+
+  /* copy to buffer */
+  memcpy(buf, &w1, 4);
+  memcpy(buf + 4, &w2, 4);
+}
+
+/* Deserialize 8-byte wire buffer into request header (host-order fields) */
+static inline void
+xrpc_response_header_from_net(const uint8_t buf[8],
+                              struct xrpc_response_header *r) {
+  uint32_t w1, w2;
+
+  /* copy the 32-bit words first then ntohl */
+  memcpy(&w1, buf, 4);
+  memcpy(&w2, buf + 4, 4);
+
+  w1 = ntohl(w1);
+  w2 = ntohl(w2);
+
+  /* extract fields using macros  */
+  r->preamble = XRPC_RES_WORD1_PREAMBLE(w1);
+  r->batch_id = XRPC_RES_WORD1_BATCHID(w1);
+
+  r->status = XRPC_REQ_WORD2_STATUS(w2);
+  r->payload_size = XRPC_REQ_WORD2_PAYLOAD_SIZE(w2);
 }
 
 /* Serialize request frame header in a 8 byte wire buffer (network-order
