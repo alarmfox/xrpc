@@ -98,12 +98,11 @@ xrpc_tcpv4_server_build_default_config(const char *address, uint16_t port,
   if (!config || !address) return XRPC_API_ERR_INVALID_ARGS;
 
   int ret;
-  unsigned char buf[sizeof(struct in_addr)];
   struct xrpc_transport_tcp_config tcp_config = {0};
 
   config->transport.type = XRPC_TRANSPORT_TCP;
 
-  ret = inet_pton(AF_INET, address, buf);
+  ret = inet_pton(AF_INET, address, &tcp_config.addr.sin_addr);
 
   if (ret == 0) return XRPC_API_ERR_INVALID_ARGS;
 
@@ -131,9 +130,6 @@ xrpc_tcpv4_server_build_default_config(const char *address, uint16_t port,
 
   tcp_config.addr.sin_family = AF_INET;
   tcp_config.addr.sin_port = htons(port);
-
-  tcp_config.addr.sin_addr.s_addr = htonl(tcp_config.addr.sin_addr.s_addr);
-  memcpy(&tcp_config.addr.sin_addr, buf, sizeof(buf));
 
   // copy all the created config into the result
   memcpy(&config->transport.config.tcp, &tcp_config,
@@ -186,10 +182,10 @@ struct xrpc_client_config {
  * @return XRPC_SUCCESS on success
  * @return XRPC_API_ERR_INVALID_ARGS if config is NULL;
  */
-static inline int
+static inline void
 xrpc_tcpv4_client_build_default_config(struct xrpc_client_config *config) {
 
-  if (!config) return XRPC_API_ERR_INVALID_ARGS;
+  if (!config) return;
 
   struct xrpc_client_connection_tcp_config tcp_config = {0};
 
@@ -204,12 +200,11 @@ xrpc_tcpv4_client_build_default_config(struct xrpc_client_config *config) {
   tcp_config.recv_timeout_ms = -1;
   tcp_config.send_buffer_size = -1;
   tcp_config.recv_buffer_size = -1;
-  tcp_config.nonblocking = true;
+
+  tcp_config.nonblocking = false;
   tcp_config.connect_timeout_ms = 0;
 
-  memcpy(&tcp_config, &config->transport_config.tcp,
+  memcpy(&config->transport_config.tcp, &tcp_config,
          sizeof(struct xrpc_client_connection_tcp_config));
-
-  return XRPC_SUCCESS;
 }
 #endif // !XRPC_CONFIG_H
