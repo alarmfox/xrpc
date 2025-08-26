@@ -13,10 +13,10 @@ static struct xrpc_client *g_client = NULL;
 /*
  * Ensure client connected
  */
-static int client_ensure_connected(const char *address, uint16_t port) {
+static int client_ensure_connected() {
   if (g_client != NULL) return 0;
 
-  struct xrpc_client_config cfg = {0};
+  struct xrpc_client_config config = {0};
   int ret;
 
   ret = xrpc_client_init(&g_client);
@@ -25,13 +25,16 @@ static int client_ensure_connected(const char *address, uint16_t port) {
     return ret;
   }
 
-  ret = xrpc_tcpv4_client_build_default_config(&cfg);
-  if (ret != XRPC_SUCCESS) {
-    fprintf(stderr, "xrpc_tcpv4_client_build_default_config() failed\n");
-    return ret;
-  }
+  xrpc_tcpv4_client_build_default_config(&config);
 
-  ret = xrpc_client_connect(g_client, address, port);
+  config.transport_config.tcp.addr.sin_family = AF_INET;
+  config.transport_config.tcp.addr.sin_port = htons(server_port);
+  ret = inet_pton(AF_INET, server_address,
+                  &config.transport_config.tcp.addr.sin_addr);
+
+  if (ret <= 0) return XRPC_API_ERR_INVALID_ARGS;
+
+  ret = xrpc_client_connect(g_client, &config);
   if (ret != 0) {
     fprintf(stderr, "xrpc_client_connect() failed\n");
     xrpc_client_free(g_client);
@@ -59,69 +62,23 @@ static int client_vector_add(uint16_t *vec, uint16_t nelems,
   }
   if (!vec || nelems == 0 || !out_sum) return -1;
 
-  /* Build a local frame header (host byte order values) */
-  struct xrpc_request_frame_header fh;
-  memset(&fh, 0, sizeof(fh));
-
-  /* set opinfo (we will use helpers to set fields) */
-  uint16_t opinfo = 0;
-  xrpc_req_fr_set_opcode(&opinfo, (uint8_t)OP_VECTOR_ADD);
-  xrpc_req_fr_set_scale(&opinfo, 0); /* no scaling */
-  xrpc_req_fr_set_dtypb(&opinfo, (uint8_t)XRPC_BASE_UINT16);
-  xrpc_req_fr_set_dtypc(&opinfo, (uint8_t)XRPC_DTYPE_CAT_VECTOR);
-  fh.opinfo = opinfo;
-
-  /* size_params for vector: number of elements */
-  fh.size_params =
-      nelems; /* host order; xrpc_request_frame_header_to_net will convert */
-
-  /* We use batch_id/frame_id = 0 for a single-frame request in this example */
-  fh.batch_id = 0;
-  fh.frame_id = 0;
-
-  /* Serialize frame header to network byte order into a contiguous buffer,
-   * then serialize vector elements in network order after it.
-   *
-   * Frame header is 8 bytes; vector data length is nelems * sizeof(uint16_t).
-   */
-  size_t vec_bytes = (size_t)nelems * sizeof(uint16_t);
-  size_t req_size = sizeof(struct xrpc_request_frame_header) + vec_bytes;
-  uint8_t *req_buf = malloc(req_size);
-  if (!req_buf) {
-    fprintf(stderr, "malloc failed\n");
-    return -1;
-  }
-
-  /* header -> network */
-  xrpc_request_frame_header_to_net(&fh, req_buf);
-
-  /* vector data -> network (helper returns written size) */
-  size_t written = 0;
-  int rc = xrpc_vector_to_net(
-      &fh, vec, req_buf + sizeof(struct xrpc_request_frame_header), vec_bytes,
-      &written);
-  if (rc != 0 || written != vec_bytes) {
-    fprintf(stderr,
-            "xrpc_vector_to_net failed (rc=%d written=%zu expected=%zu)\n", rc,
-            written, vec_bytes);
-    free(req_buf);
-    return -1;
-  }
-
   /* Call the RPC synchronously */
-  struct xrpc_response_frame *resp = NULL;
-  int call_rc =
-      xrpc_client_call_sync(g_client, OP_VECTOR_ADD, req_buf, req_size, &resp);
-  free(req_buf);
+  struct xrpc_response_frame resp = {0};
+  struct xrpc_response_frame_header response_fr_header = {0};
+  int rc;
 
-  (void)call_rc;
+  resp.header = &response_fr_header;
+  resp.data = out_sum;
+
+  rc = xrpc_client_call_sync(g_client, OP_VECTOR_ADD, vec, nelems,
+                             XRPC_BASE_UINT16, XRPC_DTYPE_CAT_VECTOR, &resp);
+
+  if (rc != XRPC_SUCCESS) return rc;
   return 0;
 }
 
 int main(void) {
-  if (client_ensure_connected(server_address, server_port) != 0) {
-    return EXIT_FAILURE;
-  }
+  if (client_ensure_connected() != 0) goto exit;
 
   /* example vector */
   uint16_t v[] = {1000, 2000, 3000, 4000}; /* sum = 10000 */
@@ -130,13 +87,12 @@ int main(void) {
   uint64_t sum = 0;
   if (client_vector_add(v, n, &sum) != 0) {
     fprintf(stderr, "vector_add RPC failed\n");
-    xrpc_client_disconnect(g_client);
-    xrpc_client_free(g_client);
-    return EXIT_FAILURE;
+    goto exit;
   }
 
   printf("vector_add returned: %" PRIu64 "\n", sum);
 
+exit:
   /* Cleanup */
   xrpc_client_disconnect(g_client);
   xrpc_client_free(g_client);
