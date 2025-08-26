@@ -52,8 +52,8 @@ static void *report_handler(void *params) {
   pthread_exit(0);
 }
 
-static int echo_handler(const struct xrpc_frame_request *req,
-                        struct xrpc_frame_response *res) {
+static int echo_handler(const struct xrpc_request_frame *req,
+                        struct xrpc_response_frame *res) {
 
   (void)req;
   (void)res;

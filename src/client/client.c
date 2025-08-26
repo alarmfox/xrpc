@@ -153,25 +153,6 @@ static int make_config_from_address(const char *addr_str,
     return XRPC_CLIENT_ERR_INVALID_CONFIG;
   }
 
-  // Set up configuration
-  *cfg =
-      (struct xrpc_client_config){.type = XRPC_TRANSPORT_TCP,
-                                  .config.tcp = {
-                                      .addr =
-                                          {
-                                              .sin_family = AF_INET,
-                                              .sin_port = htons((uint16_t)port),
-                                              .sin_addr = addr,
-                                          },
-                                      .nodelay = true,
-                                      .keepalive = false,
-                                      .connect_timeout_ms = 5000,
-                                      .send_timeout_ms = 1000,
-                                      .recv_timeout_ms = 1000,
-                                      .send_buffer_size = -1,
-                                      .recv_buffer_size = -1,
-                                  }};
-
   return XRPC_SUCCESS;
 }
 

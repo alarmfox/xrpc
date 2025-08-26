@@ -888,10 +888,10 @@ static void frame_process_request(struct xrpc_frame_context *fctx) {
     /* Call the registered handler */
     int ret;
     xrpc_handler_fn handler = server->handlers[operation_id];
-    struct xrpc_frame_request req = {.header = fctx->request_header,
+    struct xrpc_request_frame req = {.header = fctx->request_header,
                                      .data = fctx->request_data};
 
-    struct xrpc_frame_response res = {.header = fctx->response_header,
+    struct xrpc_response_frame res = {.header = fctx->response_header,
                                       .data = fctx->response_data};
     /* Execute handler */
     ret = handler(&req, &res);

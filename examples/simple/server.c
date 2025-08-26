@@ -31,8 +31,8 @@ static void signal_handler(int sig) {
   printf("\nShutting down server...\n");
 }
 
-static int echo_handler(const struct xrpc_frame_request *rq,
-                        struct xrpc_frame_response *rs) {
+static int vector_add_handler(const struct xrpc_request_frame *rq,
+                              struct xrpc_response_frame *rs) {
   (void)rq;
   (void)rs;
   return XRPC_SUCCESS;
@@ -107,8 +107,8 @@ int main(void) {
   print_config(&config);
 
   printf("Creating XRPC Server on %s:%d\n", address, port);
-  if (xrpc_server_register(srv, OP_ECHO, echo_handler, XRPC_RF_OVERWRITE) !=
-      XRPC_SUCCESS) {
+  if (xrpc_server_register(srv, OP_ECHO, vector_add_handler,
+                           XRPC_RF_OVERWRITE) != XRPC_SUCCESS) {
     printf("cannot register dummy handler\n");
     goto exit;
   }

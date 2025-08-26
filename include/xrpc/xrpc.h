@@ -10,12 +10,12 @@
 /*
  * Request and response frame wrappers to be used in handlers
  */
-struct xrpc_frame_request {
+struct xrpc_request_frame {
   struct xrpc_request_frame_header *header;
   const void *data;
 };
 
-struct xrpc_frame_response {
+struct xrpc_response_frame {
   struct xrpc_response_frame_header *header;
   void *data;
 };
@@ -33,8 +33,8 @@ struct xrpc_server;
  * @param req  Pointer to the incoming request data.
  * @return 0 on success, nonzero on error.
  */
-typedef int (*xrpc_handler_fn)(const struct xrpc_frame_request *rq,
-                               struct xrpc_frame_response *rs);
+typedef int (*xrpc_handler_fn)(const struct xrpc_request_frame *rq,
+                               struct xrpc_response_frame *rs);
 
 /**
  * @brief Creates and initializes an xrpc server including the underlying
@@ -120,12 +120,13 @@ int xrpc_client_init(struct xrpc_client **cli);
 /*
  * @brief Connect to an XRPC server.
  *
- * @param[out] cli  Pointer to the client instance.
- * @param[in]  cfg  Pointer to client configuration
+ * @param[out] cli      Pointer to the client instance.
+ * @param[in]  address  Address of the server
+ * @param[in]  port     Port of the server
  * @return 0 on success, -1 on error.
  */
 int xrpc_client_connect(struct xrpc_client *cli,
-                        const struct xrpc_client_config *cfg);
+                        const struct xrpc_client_config *config);
 
 /*
  * @brief Connect to an XRPC server.
@@ -146,9 +147,9 @@ int xrpc_client_disconnect(struct xrpc_client *cli);
  * @return XRPC_SUCCESS on success, error code on failure.
  */
 struct xrpc_response;
-int xrpc_client_call_sync(struct xrpc_client *cli, uint32_t op,
+int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
                           const void *request_data, size_t request_size,
-                          struct xrpc_response **response);
+                          struct xrpc_response_frame **response);
 
 /*
  * @brief Close client and free resources.
@@ -171,13 +172,5 @@ enum xrpc_client_status xrpc_client_status_get(const struct xrpc_client *cli);
  * @param[out] true if the server is connected, false otherwise
  */
 bool xrpc_client_is_connected(const struct xrpc_client *cli);
-
-/*
- * @brief Return the server name
- *
- * @param[in] cli Client instance
- * @param[out] Server name if connected. "" otherwise.
- */
-const char *xrpc_client_get_server_name(const struct xrpc_client *cli);
 
 #endif // XRPC_H

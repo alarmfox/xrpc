@@ -14,7 +14,7 @@
  * ==================================================================
  */
 
-/**
+/*
  * @brief TCP transport configuration struct.
  *
  * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
