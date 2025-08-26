@@ -5,7 +5,9 @@
 
 ## Introduction
 A small (but very fun) project to explore RPC in C.
+The target of `xrpc` is to produce a `libxrpc` which users can be use in their own projects.
 The goal is to explore and compare different implementations: from raw TCP sockets to RDMA.
+
 
 ## Usage (server only)
 
@@ -34,15 +36,10 @@ The following example is based from [server.c](./examples/tcp/server.c).
 #define OP_ECHO 0
 
 // declare an handler (response data will be freed after being sent by the caller)
-static int echo_handler(const struct xrpc_request *req,
-                         struct xrpc_response *res) {
-
-  res->hdr->status = XRPC_RESPONSE_SUCCESS;
-  res->hdr->sz = sizeof(uint64_t);
-
-  res->data = malloc(sizeof(uint64_t));
-  memcpy(res->data, req->data, sizeof(uint64_t));
-
+static int echo_handler(const struct xrpc_frame_request *rq,
+                        struct xrpc_frame_response *rs) {
+  (void)rq;
+  (void)rs;
   return XRPC_SUCCESS;
 }
 
@@ -63,6 +60,7 @@ int main(void) {
     printf("cannot create xrpc_server\n");
     goto exit;
   }
+  printf("Creating XRPC Server on %s:%d\n", "127.0.0.1", 9000);
 
   // register the handler 
   if (xrpc_server_register(srv, OP_DUMMY, dummy_handler, XRPC_RF_OVERWRITE) !=
@@ -70,6 +68,12 @@ int main(void) {
     printf("cannot register dummy handler\n");
     goto exit;
   }
+  
+  printf("\nServer started successfully!\n");
+  print_config(&cfg);
+  
+  printf("Available operations:\n");
+  printf("  0x%02X - Echo (mirror input payload)\n", OP_ECHO);
 
   // run the server
   xrpc_server_run(srv);
