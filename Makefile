@@ -56,7 +56,8 @@ libxrpc.a: $(LIB_OBJS)
 
 ## examples: builds example applications
 examples: $(LIB_OBJS)
-	$(CC) $(CFLAGS) examples/tcp/server.c -o examples/tcp/server $^
+	$(CC) $(CFLAGS) examples/simple/server.c -o examples/simple/server $^
+	$(CC) $(CFLAGS) examples/simple/client.c -o examples/simple/client $^
 
 ## client: builds client applications
 client: $(CLI_OBJS) $(LIB_OBJS)
