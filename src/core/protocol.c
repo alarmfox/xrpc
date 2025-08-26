@@ -1,5 +1,7 @@
-#include "xrpc/protocol.h"
+#include <string.h>
+
 #include "xrpc/error.h"
+#include "xrpc/protocol.h"
 #include "xrpc/protocol_utils.h"
 
 void xrpc_request_header_to_net(const struct xrpc_request_header *r,
