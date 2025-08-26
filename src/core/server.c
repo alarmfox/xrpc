@@ -784,8 +784,9 @@ static void handle_request_header(struct xrpc_connection_context *ctx) {
   // deserialize the request
   xrpc_request_header_from_net(ctx->request_header_raw, hdr);
 
-  uint8_t proto_version = XRPC_REQ_GET_VER(*hdr);
-  enum xrpc_request_type msg_type = XRPC_REQ_GET_TYPE(*hdr);
+  uint8_t proto_version = xrpc_req_get_ver_from_preamble(hdr->preamble);
+  enum xrpc_request_type msg_type =
+      xrpc_req_get_ver_from_preamble(hdr->preamble);
 
   // if protocol mismatch return an error
   if (proto_version != XRPC_PROTO_VERSION) {
@@ -871,23 +872,29 @@ static void frame_process_request(struct xrpc_frame_context *fctx) {
   struct xrpc_request_frame_header *req_header = fctx->request_header;
 
   /* Extract operation ID and find handler */
-  uint8_t operation_id = XRPC_REQ_FR_GET_OPCODE(*req_header);
+  uint8_t operation_id = xrpc_req_fr_get_opcode_from_opinfo(req_header->opinfo);
 
-  /* Get server instance - you'll need to add a back-reference to server in
-   * conn_ctx */
-  struct xrpc_server *server = conn_ctx->server; // Add this field to conn_ctx
+  struct xrpc_server *server = conn_ctx->server;
 
   if (operation_id >= MAX_HANDLERS || !server->handlers[operation_id]) {
     /* No handler found - prepare error response */
-    XRPC_RES_FR_SET_STATUS(*fctx->response_header, XRPC_PROTO_ERR_INVALID_OP);
+    xrpc_res_fr_set_status(&fctx->response_header->opinfo,
+                           XRPC_FR_RESPONSE_INVALID_OP);
     fctx->response_data = NULL;
     fctx->response_size = 0;
+    fctx->last_error = XRPC_PROTO_ERR_INVALID_OP;
   } else {
     /* Call the registered handler */
+    int ret;
     xrpc_handler_fn handler = server->handlers[operation_id];
+    struct xrpc_frame_request req = {.header = fctx->request_header,
+                                     .data = fctx->request_data};
 
+    struct xrpc_frame_response res = {.header = fctx->response_header,
+                                      .data = fctx->response_data};
     /* Execute handler */
-    handler();
+    ret = handler(&req, &res);
+    (void)ret;
   }
 
   /* Transition to write response state */

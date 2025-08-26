@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "xrpc/protocol_utils.h"
+
 /*
  * Usage: the client negotiate a batch identifier with the server. A batch is a
  * sequence of operation that the server performs without renegoatiating
@@ -167,7 +169,7 @@ static_assert(sizeof(struct xrpc_response_header) == 8,
 enum xrpc_fr_resp_status {
   XRPC_FR_RESPONSE_SUCCESS = 0,
   XRPC_FR_RESPONSE_INTERNAL_ERROR = 1,
-  XRPC_FR_RESPONSE_UNSUPPORTED_HANDLER = 2,
+  XRPC_FR_RESPONSE_INVALID_OP = 2,
   XRPC_FR_RESPONSE_INVALID_PARAMS = 3,
 };
 
@@ -249,212 +251,13 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
 #define xrpc_ntoh64(x) (x)
 #endif
 
-// clang-format on
-#define XRPC_MASK(bits) ((uint32_t)((1u << (bits)) - 1u))
-
-/* Request preamble (8 bits: VER[7:4] | TYPE[3:0]) */
-#define XRPC_REQ_PREAMBLE_MAKE(ver, type)                                      \
-  (uint8_t)((((uint8_t)(ver) & 0x0Fu) << 4) | ((uint8_t)(type) & 0x0Fu))
-#define XRPC_REQ_PREAMBLE_VER(preamble)                                        \
-  (uint8_t)((((uint8_t)(preamble)) >> 4) & 0x0Fu)
-#define XRPC_REQ_PREAMBLE_TYPE(preamble)                                       \
-  (uint8_t)(((uint8_t)(preamble)) & 0x0Fu)
-
-/* Word packing/unpacking (host-order). Call htonl/ntohl when moving to/from
- * wire */
-#define XRPC_REQ_WORD1_PACK(preamble_byte, resp_mode, batch_id)                \
-  ((uint32_t)(((uint32_t)(preamble_byte) << 24) |                              \
-              ((uint32_t)(resp_mode) << 16) |                                  \
-              ((uint32_t)(batch_id) & 0xFFFFu)))
-
-#define XRPC_REQ_WORD1_PREAMBLE(word1)                                         \
-  (uint8_t)((((uint32_t)(word1)) >> 24) & 0xFFu)
-
-#define XRPC_REQ_WORD1_RESPMODE(word1)                                         \
-  (uint8_t)((((uint32_t)(word1)) >> 16) & 0xFFu)
-
-#define XRPC_REQ_WORD1_BATCHID(word1) (uint16_t)(((uint32_t)(word1)) & 0xFFFFu)
-
-#define XRPC_REQ_WORD2_PACK(batch_size, reserved)                              \
-  ((uint32_t)((((uint32_t)(batch_size) & 0xFFFFu) << 16) |                     \
-              ((uint32_t)(reserved) & 0xFFFFu)))
-
-#define XRPC_REQ_WORD2_BATCHSIZE(word2)                                        \
-  (uint16_t)((((uint32_t)(word2)) >> 16) & 0xFFFFu)
-
-#define XRPC_REQ_WORD2_RESERVED(word2) (uint16_t)(((uint32_t)(word2)) & 0xFFFFu)
-
-#define XRPC_RES_WORD1_PACK(preamble_byte, batch_id)                           \
-  ((uint32_t)(((uint32_t)(preamble_byte) << 24) | ((uint32_t)(0x00) << 16) |   \
-              ((uint32_t)(batch_id) & 0xFFFFu)))
-
-#define XRPC_RES_WORD1_PREAMBLE(word1)                                         \
-  (uint8_t)((((uint32_t)(word1)) >> 24) & 0xFFu)
-
-#define XRPC_RES_WORD1_RESPMODE(word1)                                         \
-  (uint8_t)((((uint32_t)(word1)) >> 16) & 0xFFu)
-
-#define XRPC_RES_WORD1_BATCHID(word1) (uint16_t)(((uint32_t)(word1)) & 0xFFFFu)
-
-#define XRPC_RES_WORD2_PACK(status, payload_size)                              \
-  ((uint32_t)((((uint32_t)(status) & 0xFFFFu) << 16) |                         \
-              ((uint32_t)(payload_size) & 0xFFFFu)))
-
-#define XRPC_REQ_WORD2_STATUS(word2)                                           \
-  (uint16_t)((((uint32_t)(word2)) >> 16) & 0xFFFFu)
-
-#define XRPC_REQ_WORD2_PAYLOAD_SIZE(word2)                                     \
-  (uint16_t)(((uint32_t)(word2)) & 0xFFFFu)
-
-#define XRPC_REQ_FR_WORD1_PACK(opinfo, size_params)                            \
-  (uint32_t)(((uint32_t)(opinfo & 0xFFFFu) << 16) |                            \
-             (uint32_t)(size_params & 0xFFFFu))
-
-#define XRPC_REQ_FR_WORD2_PACK(batch_id, frame_id)                             \
-  (uint32_t)(((uint32_t)(batch_id & 0xFFFFu) << 16) |                          \
-             (uint32_t)(frame_id & 0xFFFFu))
-
-#define XRPC_REQ_FR_WORD1_OPINFO(word1)                                        \
-  (uint16_t)((uint32_t)(word1 >> 16) & 0xFFFFu)
-
-#define XRPC_REQ_FR_WORD1_SIZE_PARAMS(word1)                                   \
-  (uint16_t)(((uint32_t)(word1)) & 0xFFFFu)
-
-#define XRPC_REQ_FR_DTYPB(opinfo) (uint8_t)(((uint16_t)(opinfo) >> 2) & 0x3Fu)
-#define XRPC_REQ_FR_DTYPC(opinfo) (uint8_t)(((uint16_t)(opinfo)) & 0x03u)
-
-#define XRPC_REQ_FR_WORD2_BATCH_ID(word2)                                      \
-  (uint16_t)(((uint32_t)(word2) >> 16) & 0xFFFFu)
-
-#define XRPC_REQ_FR_WORD2_FRAME_ID(word2)                                      \
-  (uint16_t)(((uint32_t)(word2)) & 0xFFFFu)
-
-#define XRPC_RES_FR_WORD1_PACK(opinfo, size_params)                            \
-  (uint32_t)(((uint32_t)(opinfo & 0xFFFFu) << 16) |                            \
-             (uint32_t)(size_params & 0xFFFFu))
-
-#define XRPC_RES_FR_WORD2_PACK(batch_id, frame_id)                             \
-  (uint32_t)(((uint32_t)(batch_id & 0xFFFFu) << 16) |                          \
-             (uint32_t)(frame_id & 0xFFFFu))
-
-#define XRPC_RES_FR_WORD1_OPINFO(word1)                                        \
-  (uint16_t)((uint32_t)(word1 >> 16) & 0xFFFFu)
-
-#define XRPC_RES_FR_WORD1_SIZE_PARAMS(word1)                                   \
-  (uint16_t)(((uint32_t)(word1)) & 0xFFFFu)
-
-#define XRPC_RES_FR_WORD2_BATCH_ID(word2)                                      \
-  (uint16_t)(((uint32_t)(word2) >> 16) & 0xFFFFu)
-
-#define XRPC_RES_FR_WORD2_FRAME_ID(word2)                                      \
-  (uint16_t)(((uint32_t)(word2)) & 0xFFFFu)
-
-/*
- * Utils to get and set fields from `xrpc_request_header`
- *
- * Bit layout of opinfo (MSB..LSB):
- *  bits  11-8 : TYPE (4 bits)
- *  bits  15-12: VER (4 bits)
- */
-
-#define XRPC_REQ_TYPE_SHIFT 0
-#define XRPC_REQ_TYPE_MASK 0x0Fu
-
-#define XRPC_REQ_VER_SHIFT 4
-#define XRPC_REQ_VER_MASK 0x0Fu
-
-#define XRPC_REQ_GET_TYPE(hdr)                                                 \
-  (uint8_t)((((uint16_t)((hdr).preamble)) >> XRPC_REQ_TYPE_SHIFT) &            \
-            XRPC_REQ_TYPE_MASK)
-
-#define XRPC_REQ_GET_VER(hdr)                                                  \
-  (uint8_t)((((uint16_t)((hdr).preamble)) >> XRPC_REQ_VER_SHIFT) &             \
-            XRPC_REQ_VER_MASK)
-
-/*
- * Utils to get and set fields from `xrpc_request_frame_header`
- *
- * Bit layout of opinfo (MSB..LSB):
- *  bits  1-0 : DC (2 bits)
- *  bits  5-2 : DTYPB (4 bits)
- *  bits  9-6 : SCALE (4 bits)
- *  bits  15-10: OPCODE (6 bits)
- */
-
-#define XRPC_REQ_FR_DTYPC_SHIFT 0
-#define XRPC_REQ_FR_DTYPC_MASK 0x03u
-
-#define XRPC_REQ_FR_DTYPB_SHIFT 2
-#define XRPC_REQ_FR_DTYPB_MASK 0x0Fu
-
-#define XRPC_REQ_FR_SCALE_SHIFT 6
-#define XRPC_REQ_FR_SCALE_MASK 0x0Fu
-
-#define XRPC_REQ_FR_OPCODE_SHIFT 10
-#define XRPC_REQ_FR_OPCODE_MASK 0x3Fu
-
-/* getters (hdr may be an lvalue expression producing a struct/union) */
-#define XRPC_REQ_FR_GET_DTYPC(hdr)                                             \
-  (uint8_t)((((uint16_t)((hdr).opinfo)) >> XRPC_REQ_FR_DTYPC_SHIFT) &          \
-            XRPC_REQ_FR_DTYPC_MASK)
-
-#define XRPC_REQ_FR_GET_DTYPB(hdr)                                             \
-  (uint8_t)((((uint16_t)((hdr).opinfo)) >> XRPC_REQ_FR_DTYPB_SHIFT) &          \
-            XRPC_REQ_FR_DTYPB_MASK)
-
-#define XRPC_REQ_FR_GET_SCALE(hdr)                                             \
-  (uint8_t)((((uint16_t)((hdr).opinfo)) >> XRPC_REQ_FR_SCALE_SHIFT) &          \
-            XRPC_REQ_FR_SCALE_MASK)
-
-#define XRPC_REQ_FR_GET_OPCODE(hdr)                                            \
-  (uint8_t)((((uint16_t)((hdr).opinfo)) >> XRPC_REQ_FR_OPCODE_SHIFT) &         \
-            XRPC_REQ_FR_OPCODE_MASK)
-
-/* setters clear the existing bits then OR the new value in */
-#define XRPC_REQ_FR_SET_DTYPC(hdr, dtypc)                                      \
-  do {                                                                         \
-    (hdr).opinfo = (uint16_t)(((uint16_t)(hdr).opinfo) &                       \
-                              ~((uint16_t)(XRPC_REQ_FR_DTYPC_MASK              \
-                                           << XRPC_REQ_FR_DTYPC_SHIFT)));      \
-    (hdr).opinfo |= (uint16_t)((((uint16_t)(dtypc)) & XRPC_REQ_FR_DTYPC_MASK)  \
-                               << XRPC_REQ_FR_DTYPC_SHIFT);                    \
-  } while (0)
-
-#define XRPC_REQ_FR_SET_DTYPB(hdr, dtypb)                                      \
-  do {                                                                         \
-    (hdr).opinfo = (uint16_t)(((uint16_t)(hdr).opinfo) &                       \
-                              ~((uint16_t)(XRPC_REQ_FR_DTYPB_MASK              \
-                                           << XRPC_REQ_FR_DTYPB_SHIFT)));      \
-    (hdr).opinfo |= (uint16_t)((((uint16_t)(dtypb)) & XRPC_REQ_FR_DTYPB_MASK)  \
-                               << XRPC_REQ_FR_DTYPB_SHIFT);                    \
-  } while (0)
-
-#define XRPC_REQ_FR_SET_SCALE(hdr, scale)                                      \
-  do {                                                                         \
-    (hdr).opinfo = (uint16_t)(((uint16_t)(hdr).opinfo) &                       \
-                              ~((uint16_t)(XRPC_REQ_FR_SCALE_MASK              \
-                                           << XRPC_REQ_FR_SCALE_SHIFT)));      \
-    (hdr).opinfo |= (uint16_t)((((uint16_t)(scale)) & XRPC_REQ_FR_SCALE_MASK)  \
-                               << XRPC_REQ_FR_SCALE_SHIFT);                    \
-  } while (0)
-
-#define XRPC_REQ_FR_SET_OPCODE(hdr, opcode)                                    \
-  do {                                                                         \
-    (hdr).opinfo = (uint16_t)(((uint16_t)(hdr).opinfo) &                       \
-                              ~((uint16_t)(XRPC_REQ_FR_OPCODE_MASK             \
-                                           << XRPC_REQ_FR_OPCODE_SHIFT)));     \
-    (hdr).opinfo |=                                                            \
-        (uint16_t)((((uint16_t)(opcode)) & XRPC_REQ_FR_OPCODE_MASK)            \
-                   << XRPC_REQ_FR_OPCODE_SHIFT);                               \
-  } while (0)
-
 // Batch processing utilities
 static inline size_t
 xrpc_calculate_frame_data_size(const struct xrpc_request_frame_header *hdr) {
 
-  enum xrpc_dtype_base dtypb = XRPC_REQ_FR_GET_DTYPB(*hdr);
-  enum xrpc_dtype_category dtypc = XRPC_REQ_FR_GET_DTYPC(*hdr);
-  uint8_t scale = XRPC_REQ_FR_GET_SCALE(*hdr);
+  enum xrpc_dtype_base dtypb = xrpc_req_fr_get_dtypb_from_opinfo(hdr->opinfo);
+  enum xrpc_dtype_category dtypc = xrpc_req_fr_get_dtypc_from_opinfo(hdr->opinfo);
+  uint8_t scale = xrpc_req_fr_get_scale_from_opinfo(hdr->opinfo);
 
   size_t base_size = xrpc_dtypb_size(dtypb);
   if (base_size == 0) return 0;
@@ -484,157 +287,33 @@ xrpc_calculate_frame_data_size(const struct xrpc_request_frame_header *hdr) {
   }
 }
 
+// clang-format on
 /*
- * Serialize request header into 8-byte wire buffer (network-order fields)
+ * Utilities  to serialize and deserialize struct to and from the network.
  */
-static inline void
-xrpc_request_header_to_net(const struct xrpc_request_header *r,
-                           uint8_t buf[8]) {
+void xrpc_request_header_to_net(const struct xrpc_request_header *r,
+                                uint8_t buf[8]);
 
-  uint32_t w1 = XRPC_REQ_WORD1_PACK(r->preamble, r->resp_mode, r->batch_id);
-  uint32_t w2 = XRPC_REQ_WORD2_PACK(r->batch_size, r->reserved);
+void xrpc_request_header_from_net(const uint8_t buf[8],
+                                  struct xrpc_request_header *r);
+void xrpc_response_header_to_net(const struct xrpc_response_header *r,
+                                 uint8_t buf[8]);
 
-  /* convert to network byte order */
-  w1 = htonl(w1);
-  w2 = htonl(w2);
+void xrpc_response_header_from_net(const uint8_t buf[8],
+                                   struct xrpc_response_header *r);
 
-  /* copy to buffer */
-  memcpy(buf, &w1, 4);
-  memcpy(buf + 4, &w2, 4);
-}
+void xrpc_request_frame_header_to_net(const struct xrpc_request_frame_header *r,
+                                      uint8_t buf[8]);
 
-/* Deserialize 8-byte wire buffer into request header (host-order fields) */
-static inline void xrpc_request_header_from_net(const uint8_t buf[8],
-                                                struct xrpc_request_header *r) {
-  uint32_t w1, w2;
+void xrpc_request_frame_header_from_net(const uint8_t buf[8],
+                                        struct xrpc_request_frame_header *r);
 
-  /* copy the 32-bit words first then ntohl */
-  memcpy(&w1, buf, 4);
-  memcpy(&w2, buf + 4, 4);
+void xrpc_response_frame_header_to_net(
+    const struct xrpc_response_frame_header *r, uint8_t buf[8]);
 
-  w1 = ntohl(w1);
-  w2 = ntohl(w2);
+void xrpc_response_frame_header_from_net(const uint8_t buf[8],
+                                         struct xrpc_response_frame_header *r);
 
-  /* extract fields using macros  */
-  r->preamble = XRPC_REQ_WORD1_PREAMBLE(w1);
-  r->resp_mode = XRPC_REQ_WORD1_RESPMODE(w1);
-  r->batch_id = XRPC_REQ_WORD1_BATCHID(w1);
-
-  r->batch_size = XRPC_REQ_WORD2_BATCHSIZE(w2);
-  r->reserved = XRPC_REQ_WORD2_RESERVED(w2);
-}
-
-/*
- * Serialize request header into 8-byte wire buffer (network-order fields)
- */
-static inline void
-xrpc_response_header_to_net(const struct xrpc_response_header *r,
-                            uint8_t buf[8]) {
-
-  uint32_t w1 = XRPC_RES_WORD1_PACK(r->preamble, r->batch_id);
-  uint32_t w2 = XRPC_RES_WORD2_PACK(r->status, r->payload_size);
-
-  /* convert to network byte order */
-  w1 = htonl(w1);
-  w2 = htonl(w2);
-
-  /* copy to buffer */
-  memcpy(buf, &w1, 4);
-  memcpy(buf + 4, &w2, 4);
-}
-
-/* Deserialize 8-byte wire buffer into request header (host-order fields) */
-static inline void
-xrpc_response_header_from_net(const uint8_t buf[8],
-                              struct xrpc_response_header *r) {
-  uint32_t w1, w2;
-
-  /* copy the 32-bit words first then ntohl */
-  memcpy(&w1, buf, 4);
-  memcpy(&w2, buf + 4, 4);
-
-  w1 = ntohl(w1);
-  w2 = ntohl(w2);
-
-  /* extract fields using macros  */
-  r->preamble = XRPC_RES_WORD1_PREAMBLE(w1);
-  r->batch_id = XRPC_RES_WORD1_BATCHID(w1);
-
-  r->status = XRPC_REQ_WORD2_STATUS(w2);
-  r->payload_size = XRPC_REQ_WORD2_PAYLOAD_SIZE(w2);
-}
-
-/* Serialize request frame header in a 8 byte wire buffer (network-order
- * fields)*/
-static inline void
-xrpc_request_frame_header_to_net(const struct xrpc_request_frame_header *r,
-                                 uint8_t buf[8]) {
-  uint32_t w1, w2;
-
-  w1 = XRPC_REQ_FR_WORD1_PACK(r->opinfo, r->size_params);
-  w2 = XRPC_REQ_FR_WORD2_PACK(r->batch_id, r->frame_id);
-
-  w1 = htonl(w1);
-  w2 = htonl(w2);
-
-  memcpy(buf, &w1, 4);
-  memcpy(buf + 4, &w2, 4);
-}
-
-/* Deserialize request frame header from a 8 byte wire buffer (host-order
- * fields)*/
-static inline void
-xrpc_request_frame_header_from_net(const uint8_t buf[8],
-                                   struct xrpc_request_frame_header *r) {
-  uint32_t w1, w2;
-  memcpy(&w1, buf, 4);
-  memcpy(&w2, buf + 4, 4);
-
-  w1 = ntohl(w1);
-  w2 = ntohl(w2);
-
-  r->opinfo = XRPC_REQ_FR_WORD1_OPINFO(w1);
-  r->size_params = XRPC_REQ_FR_WORD1_SIZE_PARAMS(w1);
-  r->batch_id = XRPC_REQ_FR_WORD2_BATCH_ID(w2);
-  r->frame_id = XRPC_REQ_FR_WORD2_FRAME_ID(w2);
-}
-
-/* Serialize response frame header in a 8 byte wire buffer (network-order
- * fields)*/
-static inline void
-xrpc_response_frame_header_to_net(const struct xrpc_response_frame_header *r,
-                                  uint8_t buf[8]) {
-  uint32_t w1, w2;
-
-  w1 = XRPC_RES_FR_WORD1_PACK(r->opinfo, r->size_params);
-  w2 = XRPC_RES_FR_WORD2_PACK(r->batch_id, r->frame_id);
-
-  w1 = htonl(w1);
-  w2 = htonl(w2);
-
-  memcpy(buf, &w1, 4);
-  memcpy(buf + 4, &w2, 4);
-}
-
-/* Deserialize response frame header from a 8 byte wire buffer (host-order
- * fields)*/
-static inline void
-xrpc_response_frame_header_from_net(const uint8_t buf[8],
-                                    struct xrpc_response_frame_header *r) {
-  uint32_t w1, w2;
-  memcpy(&w1, buf, 4);
-  memcpy(&w2, buf + 4, 4);
-
-  w1 = ntohl(w1);
-  w2 = ntohl(w2);
-
-  r->opinfo = XRPC_RES_FR_WORD1_OPINFO(w1);
-  r->size_params = XRPC_RES_FR_WORD1_SIZE_PARAMS(w1);
-  r->batch_id = XRPC_RES_FR_WORD2_BATCH_ID(w2);
-  r->frame_id = XRPC_RES_FR_WORD2_FRAME_ID(w2);
-}
-
-/* Serialize a vector on the network (network-order) */
 int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
                        const void *data, uint8_t *buf, size_t len,
                        size_t *written);

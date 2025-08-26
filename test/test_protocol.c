@@ -1,3 +1,4 @@
+#include "xrpc/error.h"
 #include "xrpc/protocol.h"
 
 #include "test.h"
@@ -13,20 +14,24 @@ static int test_serder_request_frame_array(void) {
   size_t transferred = 0;
   int ret;
 
-  XRPC_REQ_FR_SET_DTYPC(fhdr, XRPC_DTYPE_CAT_VECTOR);
-  XRPC_REQ_FR_SET_DTYPB(fhdr, XRPC_BASE_UINT16);
-  XRPC_REQ_FR_SET_SCALE(fhdr, 0);
-  XRPC_REQ_FR_SET_OPCODE(fhdr, 43);
+  xrpc_req_fr_set_dtypc(&fhdr.opinfo, XRPC_DTYPE_CAT_VECTOR);
+  xrpc_req_fr_set_dtypb(&fhdr.opinfo, XRPC_BASE_UINT16);
+  xrpc_req_fr_set_scale(&fhdr.opinfo, 0);
+  xrpc_req_fr_set_opcode(&fhdr.opinfo, 43);
 
   // assert that parameters are set correctly
-  TEST_ASSERT_EQ(XRPC_DTYPE_CAT_VECTOR, XRPC_REQ_FR_GET_DTYPC(fhdr),
+  TEST_ASSERT_EQ(XRPC_DTYPE_CAT_VECTOR,
+                 xrpc_req_fr_get_dtypc_from_opinfo(fhdr.opinfo),
                  "category type should be vector");
 
-  TEST_ASSERT_EQ(XRPC_BASE_UINT16, XRPC_REQ_FR_GET_DTYPB(fhdr),
+  TEST_ASSERT_EQ(XRPC_BASE_UINT16,
+                 xrpc_req_fr_get_dtypb_from_opinfo(fhdr.opinfo),
                  "base type should be uint16");
 
-  TEST_ASSERT_EQ(0, XRPC_REQ_FR_GET_SCALE(fhdr), "scale should be 0");
-  TEST_ASSERT_EQ(43, XRPC_REQ_FR_GET_OPCODE(fhdr), "op code should be 99");
+  TEST_ASSERT_EQ(0, xrpc_req_fr_get_scale_from_opinfo(fhdr.opinfo),
+                 "scale should be 0");
+  TEST_ASSERT_EQ(43, xrpc_req_fr_get_opcode_from_opinfo(fhdr.opinfo),
+                 "op code should be 99");
 
   fhdr.size_params = sizeof(arr) / sizeof(arr[0]);
   fhdr.batch_id = 69;
@@ -50,14 +55,19 @@ static int test_serder_request_frame_array(void) {
   TEST_ASSERT_EQ(69, fhdr.batch_id, "Batch ID must be 69");
   TEST_ASSERT_EQ(420, fhdr.frame_id, "Frame ID must be 420");
 
-  TEST_ASSERT_EQ(XRPC_DTYPE_CAT_VECTOR, XRPC_REQ_FR_GET_DTYPC(fhdr),
+  // assert that parameters are set correctly
+  TEST_ASSERT_EQ(XRPC_DTYPE_CAT_VECTOR,
+                 xrpc_req_fr_get_dtypc_from_opinfo(fhdr.opinfo),
                  "category type should be vector");
 
-  TEST_ASSERT_EQ(XRPC_BASE_UINT16, XRPC_REQ_FR_GET_DTYPB(fhdr),
+  TEST_ASSERT_EQ(XRPC_BASE_UINT16,
+                 xrpc_req_fr_get_dtypb_from_opinfo(fhdr.opinfo),
                  "base type should be uint16");
 
-  TEST_ASSERT_EQ(0, XRPC_REQ_FR_GET_SCALE(fhdr), "scale should be 0");
-  TEST_ASSERT_EQ(43, XRPC_REQ_FR_GET_OPCODE(fhdr), "op code should be 43");
+  TEST_ASSERT_EQ(0, xrpc_req_fr_get_scale_from_opinfo(fhdr.opinfo),
+                 "scale should be 0");
+  TEST_ASSERT_EQ(43, xrpc_req_fr_get_opcode_from_opinfo(fhdr.opinfo),
+                 "op code should be 99");
 
   ret = xrpc_vector_from_net(&fhdr, buf + sizeof(fhdr),
                              sizeof(buf) - sizeof(fhdr), recv_vector,

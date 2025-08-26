@@ -1,5 +1,133 @@
 #include "xrpc/protocol.h"
 #include "xrpc/error.h"
+#include "xrpc/protocol_utils.h"
+
+void xrpc_request_header_to_net(const struct xrpc_request_header *r,
+                                uint8_t buf[8]) {
+
+  uint32_t w1 = xrpc_req_word1_pack(r->preamble, r->resp_mode, r->batch_id);
+  uint32_t w2 = xrpc_req_word2_pack(r->batch_size, r->reserved);
+
+  /* convert to network byte order */
+  w1 = htonl(w1);
+  w2 = htonl(w2);
+
+  /* copy to buffer */
+  memcpy(buf, &w1, 4);
+  memcpy(buf + 4, &w2, 4);
+}
+
+void xrpc_request_header_from_net(const uint8_t buf[8],
+                                  struct xrpc_request_header *r) {
+  uint32_t w1, w2;
+
+  /* copy the 32-bit words first then ntohl */
+  memcpy(&w1, buf, 4);
+  memcpy(&w2, buf + 4, 4);
+
+  w1 = ntohl(w1);
+  w2 = ntohl(w2);
+
+  /* extract fields using macros  */
+  r->preamble = xrpc_req_word1_preamble(w1);
+  r->resp_mode = xrpc_req_word1_respmode(w1);
+  r->batch_id = xrpc_req_word1_batchid(w1);
+
+  r->batch_size = xrpc_req_word2_batchsize(w2);
+  r->reserved = xrpc_req_word2_reserved(w2);
+}
+
+void xrpc_response_header_to_net(const struct xrpc_response_header *r,
+                                 uint8_t buf[8]) {
+
+  uint32_t w1 = xrpc_res_word1_pack(r->preamble, r->batch_id);
+  uint32_t w2 = xrpc_res_word2_pack(r->status, r->payload_size);
+
+  /* convert to network byte order */
+  w1 = htonl(w1);
+  w2 = htonl(w2);
+
+  /* copy to buffer */
+  memcpy(buf, &w1, 4);
+  memcpy(buf + 4, &w2, 4);
+}
+
+void xrpc_response_header_from_net(const uint8_t buf[8],
+                                   struct xrpc_response_header *r) {
+  uint32_t w1, w2;
+
+  /* copy the 32-bit words first then ntohl */
+  memcpy(&w1, buf, 4);
+  memcpy(&w2, buf + 4, 4);
+
+  w1 = ntohl(w1);
+  w2 = ntohl(w2);
+
+  /* extract fields using macros  */
+  r->preamble = xrpc_res_word1_preamble(w1);
+  r->batch_id = xrpc_res_word1_batchid(w1);
+
+  r->status = xrpc_res_word2_status(w2);
+  r->payload_size = xrpc_res_word2_payload_size(w2);
+}
+
+void xrpc_request_frame_header_to_net(const struct xrpc_request_frame_header *r,
+                                      uint8_t buf[8]) {
+  uint32_t w1, w2;
+
+  w1 = xrpc_req_fr_word1_pack(r->opinfo, r->size_params);
+  w2 = xrpc_req_fr_word2_pack(r->batch_id, r->frame_id);
+
+  w1 = htonl(w1);
+  w2 = htonl(w2);
+
+  memcpy(buf, &w1, 4);
+  memcpy(buf + 4, &w2, 4);
+}
+
+void xrpc_request_frame_header_from_net(const uint8_t buf[8],
+                                        struct xrpc_request_frame_header *r) {
+  uint32_t w1, w2;
+  memcpy(&w1, buf, 4);
+  memcpy(&w2, buf + 4, 4);
+
+  w1 = ntohl(w1);
+  w2 = ntohl(w2);
+
+  r->opinfo = xrpc_req_fr_word1_opinfo(w1);
+  r->size_params = xrpc_req_fr_word1_size_params(w1);
+  r->batch_id = xrpc_req_fr_word2_batch_id(w2);
+  r->frame_id = xrpc_req_fr_word2_frame_id(w2);
+}
+
+void xrpc_response_frame_header_to_net(
+    const struct xrpc_response_frame_header *r, uint8_t buf[8]) {
+  uint32_t w1, w2;
+
+  w1 = xrpc_res_fr_word1_pack(r->opinfo, r->size_params);
+  w2 = xrpc_res_fr_word2_pack(r->batch_id, r->frame_id);
+
+  w1 = htonl(w1);
+  w2 = htonl(w2);
+
+  memcpy(buf, &w1, 4);
+  memcpy(buf + 4, &w2, 4);
+}
+
+void xrpc_response_frame_header_from_net(const uint8_t buf[8],
+                                         struct xrpc_response_frame_header *r) {
+  uint32_t w1, w2;
+  memcpy(&w1, buf, 4);
+  memcpy(&w2, buf + 4, 4);
+
+  w1 = ntohl(w1);
+  w2 = ntohl(w2);
+
+  r->opinfo = xrpc_res_fr_word1_opinfo(w1);
+  r->size_params = xrpc_res_fr_word1_size_params(w1);
+  r->batch_id = xrpc_res_fr_word2_batch_id(w2);
+  r->frame_id = xrpc_res_fr_word2_frame_id(w2);
+}
 
 /* Serialize a vector on the network (network-order) */
 int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
@@ -9,8 +137,8 @@ int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
   if (!r || !data || !buf || len == 0 || !written)
     return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
 
-  enum xrpc_dtype_base dtyb = XRPC_REQ_FR_DTYPB(r->opinfo);
-  enum xrpc_dtype_category dtyc = XRPC_REQ_FR_DTYPC(r->opinfo);
+  enum xrpc_dtype_base dtyb = xrpc_req_fr_get_dtypb_from_opinfo(r->opinfo);
+  enum xrpc_dtype_category dtyc = xrpc_req_fr_get_dtypc_from_opinfo(r->opinfo);
 
   // the data category must be array
   if (dtyc != XRPC_DTYPE_CAT_VECTOR) return XRPC_PROTO_ERR_INVALID_DTYPE;
@@ -76,8 +204,8 @@ int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
   if (!r || !data || !buf || len == 0 || !read)
     return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
 
-  enum xrpc_dtype_base dtyb = XRPC_REQ_FR_DTYPB(r->opinfo);
-  enum xrpc_dtype_category dtyc = XRPC_REQ_FR_DTYPC(r->opinfo);
+  enum xrpc_dtype_base dtyb = xrpc_req_fr_get_dtypb_from_opinfo(r->opinfo);
+  enum xrpc_dtype_category dtyc = xrpc_req_fr_get_dtypc_from_opinfo(r->opinfo);
 
   // the data category must be array
   if (dtyc != XRPC_DTYPE_CAT_VECTOR) return XRPC_PROTO_ERR_INVALID_DTYPE;
