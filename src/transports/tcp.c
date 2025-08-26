@@ -275,7 +275,8 @@ static int xrpc_client_tcp_connect(struct xrpc_client_connection **conn,
     return XRPC_CLIENT_ERR_INVALID_TRANSPORT;
   }
 
-  const struct xrpc_client_connection_tcp_config *tcp_cfg = &args->config.tcp;
+  const struct xrpc_client_connection_tcp_config *tcp_cfg =
+      &args->transport_config.tcp;
   int ret, fd = -1;
   struct xrpc_client_connection *_conn = NULL;
   struct xrpc_client_connection_data *data = NULL;

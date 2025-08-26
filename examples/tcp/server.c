@@ -38,8 +38,9 @@ static int echo_handler(const struct xrpc_frame_request *rq,
   return XRPC_SUCCESS;
 }
 
-static void print_config(const struct xrpc_server_config *cfg) {
-  const struct xrpc_transport_tcp_config *c = &cfg->tcfg->config.tcp;
+static void print_config(const struct xrpc_server_config *config) {
+  const struct xrpc_transport_tcp_config *tcp_config =
+      &config->transport.config.tcp;
   char buf[64];
 
   printf("\n========================================\n");
@@ -47,61 +48,65 @@ static void print_config(const struct xrpc_server_config *cfg) {
   printf("\n========================================\n");
 
   printf("  TCP_NODELAY            : %s\n",
-         c->nodelay ? "enabled" : "disabled");
+         tcp_config->nodelay ? "enabled" : "disabled");
   printf("  SO_REUSEADDR           : %s\n",
-         c->reuseaddr ? "enabled" : "disabled");
+         tcp_config->reuseaddr ? "enabled" : "disabled");
   printf("  SO_REUSEPORT           : %s\n",
-         c->reuseport ? "enabled" : "disabled");
+         tcp_config->reuseport ? "enabled" : "disabled");
   printf("  SO_KEEPALIVE           : %s\n",
-         c->keepalive ? "enabled" : "disabled");
+         tcp_config->keepalive ? "enabled" : "disabled");
   printf("  O_NONBLOCK             : %s\n",
-         c->nonblocking ? "enabled" : "disabled");
+         tcp_config->nonblocking ? "enabled" : "disabled");
 
-  PRINT_OPT_OR_DISABLED("TCP_KEEPIDLE           :", buf, c->keepalive_idle,
-                        "s");
-  PRINT_OPT_OR_DISABLED("TCP_KEEPINTVL          :", buf, c->keepalive_interval,
-                        "s");
-  PRINT_OPT_OR_DISABLED("TCP_KEEPCNT            :", buf, c->keepalive_probes,
-                        "");
-  PRINT_OPT_OR_DISABLED("SO_SNDTIMEO            :", buf, c->send_timeout_ms,
-                        "ms");
-  PRINT_OPT_OR_DISABLED("SO_RCVTIMEO            :", buf, c->recv_timeout_ms,
-                        "ms");
-  PRINT_OPT_OR_DISABLED("SO_RCVBUF              :", buf, c->recv_buffer_size,
-                        "bytes");
-  PRINT_OPT_OR_DISABLED("SO_SNDBUF              :", buf, c->send_buffer_size,
-                        "bytes");
+  PRINT_OPT_OR_DISABLED("TCP_KEEPIDLE           :", buf,
+                        tcp_config->keepalive_idle, "s");
+  PRINT_OPT_OR_DISABLED("TCP_KEEPINTVL          :", buf,
+                        tcp_config->keepalive_interval, "s");
+  PRINT_OPT_OR_DISABLED("TCP_KEEPCNT            :", buf,
+                        tcp_config->keepalive_probes, "");
+  PRINT_OPT_OR_DISABLED("SO_SNDTIMEO            :", buf,
+                        tcp_config->send_timeout_ms, "ms");
+  PRINT_OPT_OR_DISABLED("SO_RCVTIMEO            :", buf,
+                        tcp_config->recv_timeout_ms, "ms");
+  PRINT_OPT_OR_DISABLED("SO_RCVBUF              :", buf,
+                        tcp_config->recv_buffer_size, "bytes");
+  PRINT_OPT_OR_DISABLED("SO_SNDBUF              :", buf,
+                        tcp_config->send_buffer_size, "bytes");
 
-  printf("  Connections pool size  : %d\n", c->connection_pool_size);
-  printf("  Requests pool size     : %lu\n", cfg->max_concurrent_requests);
+  printf("  Connections pool size  : %d\n", tcp_config->connection_pool_size);
+  printf("  Requests pool size     : %lu\n", config->max_concurrent_requests);
   printf("  Max concurrent I/O ops : %lu\n",
-         cfg->iocfg->max_concurrent_operations);
+         config->io.max_concurrent_operations);
 
   printf("========================================\n\n");
 }
 
 int main(void) {
-  struct xrpc_transport_config tcfg =
-      XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
+
+  const char address[] = "127.0.0.1";
+  uint16_t port = 9000;
+
+  struct xrpc_server_config config = {0};
   struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING,
                                         .max_concurrent_operations = 128};
-  struct xrpc_server_config cfg = {
-      .tcfg = &tcfg, .iocfg = &iocfg, .max_concurrent_requests = 1024};
 
-  tcfg.config.tcp.nonblocking = false;
-  tcfg.config.tcp.accept_timeout_ms = 100;
-  tcfg.config.tcp.recv_timeout_ms = 100;
-  tcfg.config.tcp.connection_pool_size = 1024;
+  config.io = iocfg;
+  xrpc_tcpv4_server_build_default_config(address, port, &config);
+  config.max_concurrent_requests = 128;
+  config.transport.config.tcp.connection_pool_size = 1024;
 
   // Set up signal handling for clean shutdown
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
-  if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
+
+  if (xrpc_server_init(&srv, &config) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");
     goto exit;
   }
 
-  printf("Creating XRPC Server on %s:%d\n", "127.0.0.1", 9000);
+  print_config(&config);
+
+  printf("Creating XRPC Server on %s:%d\n", address, port);
   if (xrpc_server_register(srv, OP_ECHO, echo_handler, XRPC_RF_OVERWRITE) !=
       XRPC_SUCCESS) {
     printf("cannot register dummy handler\n");
@@ -109,7 +114,6 @@ int main(void) {
   }
 
   printf("\nServer started successfully!\n");
-  print_config(&cfg);
 
   printf("Available operations:\n");
   printf("  0x%02X - Echo (mirror input payload)\n", OP_ECHO);

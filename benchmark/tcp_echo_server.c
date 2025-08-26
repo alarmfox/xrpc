@@ -52,15 +52,11 @@ static void *report_handler(void *params) {
   pthread_exit(0);
 }
 
-static int echo_handler(const struct xrpc_request *req,
-                        struct xrpc_response *res) {
+static int echo_handler(const struct xrpc_frame_request *req,
+                        struct xrpc_frame_response *res) {
 
-  res->hdr->status = XRPC_RESPONSE_SUCCESS;
-  res->hdr->payload_size = sizeof(uint64_t);
-
-  res->payload = malloc(sizeof(uint64_t));
-  memcpy(res->payload, req->payload, sizeof(uint64_t));
-
+  (void)req;
+  (void)res;
   return XRPC_SUCCESS;
 }
 
@@ -73,8 +69,8 @@ static void print_usage(const char *program) {
   printf("  -h            Show this help\n");
 }
 
-static void print_config(const struct xrpc_server_config *cfg) {
-  const struct xrpc_transport_tcp_config *c = &cfg->tcfg->config.tcp;
+static void print_config(const struct xrpc_server_config *config) {
+  const struct xrpc_transport_tcp_config *c = &config->transport.config.tcp;
   char buf[64];
 
   printf("\n========================================\n");
@@ -108,9 +104,9 @@ static void print_config(const struct xrpc_server_config *cfg) {
                         "bytes");
 
   printf("  Connections pool size  : %d\n", c->connection_pool_size);
-  printf("  Requests pool size     : %lu\n", cfg->max_concurrent_requests);
+  printf("  Requests pool size     : %lu\n", config->max_concurrent_requests);
   printf("  Max concurrent I/O ops : %lu\n",
-         cfg->iocfg->max_concurrent_operations);
+         config->io.max_concurrent_operations);
 
   printf("========================================\n\n");
 }
@@ -122,8 +118,14 @@ int main(int argc, char **argv) {
   signal(SIGTERM, signal_handler);
 
   int report_interval = 2;
-  int port = 9000;
+  uint16_t port = 9000;
+  const char *address = "127.0.0.1";
   struct sockaddr_in addr = {.sin_addr = {.s_addr = INADDR_LOOPBACK}};
+  struct xrpc_server_config config = {0};
+  struct xrpc_io_system_config io_config = {.type = XRPC_IO_SYSTEM_BLOCKING,
+                                            .max_concurrent_operations = 128};
+
+  struct xrpc_benchmark_stats stats = {0};
 
   int opt;
   while ((opt = getopt(argc, argv, "p:a:tr:j:h")) != -1) {
@@ -145,29 +147,27 @@ int main(int argc, char **argv) {
       return 1;
     }
   }
-  struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING,
-                                        .max_concurrent_operations = 128};
 
-  struct xrpc_transport_config tcfg =
-      XRPC_TCP_SERVER_DEFAULT_CONFIG(addr.sin_addr.s_addr, port);
-
-  struct xrpc_server_config cfg = {.tcfg = &tcfg, .iocfg = &iocfg};
-  struct xrpc_benchmark_stats stats = {0};
+  assert(xrpc_tcpv4_server_build_default_config(address, port, &config) ==
+         XRPC_SUCCESS);
 
   // Optimize for benchmarking
-  tcfg.config.tcp.nonblocking = false;
-  tcfg.config.tcp.accept_timeout_ms = 100;     // Allow periodic reports
-  tcfg.config.tcp.nodelay = true;              // Minimize latency
-  tcfg.config.tcp.connection_pool_size = 1000; // Handle many connections
-  tcfg.config.tcp.recv_timeout_ms = 100;
-  cfg.max_concurrent_requests = 1024;
+  config.transport.config.tcp.nonblocking = false;
+  config.transport.config.tcp.accept_timeout_ms = 100; // Allow periodic reports
+  config.transport.config.tcp.nodelay = true;          // Minimize latency
+  config.transport.config.tcp.connection_pool_size =
+      1000; // Handle many connections
+  config.transport.config.tcp.recv_timeout_ms = 100;
 
-  printf("Creating XRPC Server for benchmarking on %s:%d\n",
-         inet_ntoa(tcfg.config.tcp.addr.sin_addr), port);
+  config.max_concurrent_requests = 1024;
 
-  print_config(&cfg);
+  config.io = io_config;
 
-  if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
+  printf("Creating XRPC Server for benchmarking on %s:%d\n", address, port);
+
+  print_config(&config);
+
+  if (xrpc_server_init(&srv, &config) != XRPC_SUCCESS) {
     printf("cannot create xrpc_server\n");
     goto exit;
   }
@@ -200,7 +200,7 @@ exit:
     srv = NULL;
   }
 
-  print_config(&cfg);
+  print_config(&config);
   xrpc_benchmark_stats_get(&stats);
   xrpc_benchmark_stats_print(&stats);
 

@@ -30,8 +30,8 @@ static void set_server_name(struct xrpc_client *cli,
   switch (cfg->type) {
   case XRPC_TRANSPORT_TCP:
     snprintf(cli->server_name, sizeof(cli->server_name), "%s://%s:%d", "tcp",
-             inet_ntoa(cfg->config.tcp.addr.sin_addr),
-             ntohs(cfg->config.tcp.addr.sin_port));
+             inet_ntoa(cfg->transport_config.tcp.addr.sin_addr),
+             ntohs(cfg->transport_config.tcp.addr.sin_port));
   }
 }
 

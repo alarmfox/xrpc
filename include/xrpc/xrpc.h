@@ -3,8 +3,8 @@
 
 #include <netinet/in.h>
 #include <stdbool.h>
-#include <sys/un.h>
 
+#include "xrpc/config.h"
 #include "xrpc/protocol.h"
 
 /*
@@ -22,83 +22,9 @@ struct xrpc_frame_response {
 
 /*
  * ==================================================================
- * Server configuration system
- * ==================================================================
- */
-
-/**
- * @brief TCP transport configuration struct.
- *
- * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
- * and port.
- */
-struct xrpc_transport_tcp_config {
-  struct sockaddr_in addr;
-
-  // TCP-specific options
-  bool nodelay;            // TCP_NODELAY (disable Nagle)
-  bool reuseaddr;          // SO_REUSEADDR
-  bool reuseport;          // SO_REUSEPORT
-  bool keepalive;          // SO_KEEPALIVE
-  int keepalive_idle;      // TCP_KEEPIDLE (seconds)
-  int keepalive_interval;  // TCP_KEEPINTVL (seconds)
-  int keepalive_probes;    // TCP_KEEPCNT
-  int send_timeout_ms;     // SO_SNDTIMEO
-  int recv_timeout_ms;     // SO_RCVTIMEO
-  uint32_t listen_backlog; // listen() backlog
-
-  // Buffer size
-  int send_buffer_size; // SO_SNDBUF
-  int recv_buffer_size; // SO_RCVBUF
-
-  // Non blocking mode
-  bool nonblocking; // Set O_NONBLOCK
-
-  int accept_timeout_ms; // Puts a timeout (using `select()`) on the socket sot
-                         // that even if when blocking, we are allowed to run an
-                         // event loop. Set `0` to disable non blocking. This
-                         // parameter is ignored if `nonblocking = true`
-
-  int connection_pool_size; // size of the connection pool to preallocate
-                            // connection memory
-};
-
-enum xrpc_transport_type {
-  XRPC_TRANSPORT_TCP,
-};
-
-enum xrpc_io_system_type {
-  XRPC_IO_SYSTEM_BLOCKING,
-};
-
-struct xrpc_transport_config {
-  enum xrpc_transport_type type;
-  union {
-    struct xrpc_transport_tcp_config tcp;
-  } config;
-};
-
-struct xrpc_io_system_config {
-  enum xrpc_io_system_type type;
-  union {
-  } config;
-  size_t max_concurrent_operations;
-};
-
-struct xrpc_server_config {
-  struct xrpc_transport_config *tcfg;
-  struct xrpc_io_system_config *iocfg;
-
-  size_t max_concurrent_requests;
-};
-
-/*
- * ==================================================================
  * Server API
  * ==================================================================
  */
-
-// Forward definitions
 struct xrpc_server;
 
 /**
@@ -119,8 +45,8 @@ typedef int (*xrpc_handler_fn)(const struct xrpc_frame_request *rq,
  *
  * @return 0 on success, -1 on error.
  */
-int xrpc_server_create(struct xrpc_server **srv,
-                       const struct xrpc_server_config *cfg);
+int xrpc_server_init(struct xrpc_server **srv,
+                     const struct xrpc_server_config *cfg);
 
 // Register handler flags
 enum xrpc_handler_register_flags {
@@ -175,46 +101,12 @@ void xrpc_server_free(struct xrpc_server *srv);
  * ==================================================================
  * These are the core functions to be used by the client.
  */
-
 struct xrpc_client;
 
 enum xrpc_client_status {
   XRPC_CLIENT_CONNECTED,
   XRPC_CLIENT_DISCONNECTED,
   XRPC_CLIENT_ERROR,
-};
-/*
- * @brief TCP transport configuration struct.
- *
- * TCP transport configuration struct. Contains sockaddr_in which contains IPv4
- * and port.
- */
-struct xrpc_client_connection_tcp_config {
-  struct sockaddr_in addr;
-
-  // TCP-specific options
-  bool nodelay;           // TCP_NODELAY (disable Nagle)
-  bool keepalive;         // SO_KEEPALIVE
-  int keepalive_idle;     // TCP_KEEPIDLE (seconds)
-  int keepalive_interval; // TCP_KEEPINTVL (seconds)
-  int keepalive_probes;   // TCP_KEEPCNT
-  int send_timeout_ms;    // SO_SNDTIMEO
-  int recv_timeout_ms;    // SO_RCVTIMEO
-  int connect_timeout_ms;
-
-  // Buffer size
-  int send_buffer_size; // SO_SNDBUF
-  int recv_buffer_size; // SO_RCVBUF
-
-  // Non blocking mode
-  bool nonblocking; // Set O_NONBLOCK
-};
-
-struct xrpc_client_config {
-  enum xrpc_transport_type type;
-  union {
-    struct xrpc_client_connection_tcp_config tcp;
-  } config;
 };
 
 /*
@@ -288,58 +180,4 @@ bool xrpc_client_is_connected(const struct xrpc_client *cli);
  */
 const char *xrpc_client_get_server_name(const struct xrpc_client *cli);
 
-/*
- * ==================================================================
- * Configuration utils
- * ==================================================================
- */
-#define XRPC_TCP_SERVER_DEFAULT_CONFIG(addr_, port_)                           \
-  {                                                                            \
-    .type = XRPC_TRANSPORT_TCP, .config.tcp = {                                \
-      .addr =                                                                  \
-          {                                                                    \
-              .sin_family = AF_INET,                                           \
-              .sin_port = htons(port_),                                        \
-              .sin_addr.s_addr = htonl(addr_),                                 \
-          },                                                                   \
-      .nodelay = true,                                                         \
-      .reuseaddr = false,                                                      \
-      .reuseport = false,                                                      \
-      .keepalive = true,                                                       \
-      .keepalive_idle = 60,                                                    \
-      .keepalive_interval = 5,                                                 \
-      .keepalive_probes = 3,                                                   \
-      .send_timeout_ms = -1,                                                   \
-      .recv_timeout_ms = -1,                                                   \
-      .listen_backlog = 128,                                                   \
-      .send_buffer_size = -1,                                                  \
-      .recv_buffer_size = -1,                                                  \
-      .nonblocking = true,                                                     \
-      .accept_timeout_ms = 0,                                                  \
-      .connection_pool_size = 10,                                              \
-    }                                                                          \
-  }
-
-#define XRPC_TCP_CLIENT_DEFAULT_CONFIG(addr_, port_)                           \
-  {                                                                            \
-    .type = XRPC_TRANSPORT_TCP, .config.tcp = {                                \
-      .addr =                                                                  \
-          {                                                                    \
-              .sin_family = AF_INET,                                           \
-              .sin_port = htons(port_),                                        \
-              .sin_addr.s_addr = htonl(addr_),                                 \
-          },                                                                   \
-      .nodelay = true,                                                         \
-      .keepalive = true,                                                       \
-      .keepalive_idle = 60,                                                    \
-      .keepalive_interval = 5,                                                 \
-      .keepalive_probes = 3,                                                   \
-      .send_timeout_ms = -1,                                                   \
-      .recv_timeout_ms = -1,                                                   \
-      .send_buffer_size = -1,                                                  \
-      .recv_buffer_size = -1,                                                  \
-      .nonblocking = true,                                                     \
-      .connect_timeout_ms = 0,                                                 \
-    }                                                                          \
-  }
 #endif // XRPC_H

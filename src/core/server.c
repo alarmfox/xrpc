@@ -149,8 +149,8 @@ static const struct xrpc_io_system_ops *io_ops_map[] = {
     [XRPC_IO_SYSTEM_BLOCKING] = &xrpc_blocking_ops,
 };
 
-int xrpc_server_create(struct xrpc_server **out_server,
-                       const struct xrpc_server_config *config) {
+int xrpc_server_init(struct xrpc_server **out_server,
+                     const struct xrpc_server_config *config) {
 
   int ret = XRPC_SUCCESS;
   struct xrpc_server *server = NULL;
@@ -164,27 +164,28 @@ int xrpc_server_create(struct xrpc_server **out_server,
   if (!server) XRPC_PRINT_ERR_AND_RETURN("malloc", XRPC_API_ERR_ALLOC);
 
   // Check if the transport is present in the transport_ops_map
-  if ((size_t)config->tcfg->type >=
+  if ((size_t)config->transport.type >=
       sizeof(transport_ops_map) / sizeof(transport_ops_map[0]))
     return XRPC_API_ERR_INVALID_TRANSPORT;
 
   // Find the transport_ops table from the transport_ops_map and init the
   // transport
-  const struct xrpc_transport_ops *tops = transport_ops_map[config->tcfg->type];
+  const struct xrpc_transport_ops *tops =
+      transport_ops_map[config->transport.type];
 
-  ret = tops->init(&server->transport, config->tcfg);
+  ret = tops->init(&server->transport, &config->transport);
   if (ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("cannot create transport", ret);
 
   // Check if the transport is present in the transport_ops_map
-  if ((size_t)config->iocfg->type >= sizeof(io_ops_map) / sizeof(io_ops_map[0]))
+  if ((size_t)config->io.type >= sizeof(io_ops_map) / sizeof(io_ops_map[0]))
     return XRPC_API_ERR_INVALID_TRANSPORT;
 
   // Find the `io_system_ops` table from the ios_map and init the
   // I/O system.
-  const struct xrpc_io_system_ops *ops = io_ops_map[config->iocfg->type];
+  const struct xrpc_io_system_ops *ops = io_ops_map[config->io.type];
 
-  ret = ops->init(&server->io, config->iocfg);
+  ret = ops->init(&server->io, &config->io);
   if (ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("cannot create I/O system", ret);
 
