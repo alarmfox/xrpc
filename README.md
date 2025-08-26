@@ -70,7 +70,6 @@ int main(void) {
   }
   
   printf("\nServer started successfully!\n");
-  print_config(&cfg);
   
   printf("Available operations:\n");
   printf("  0x%02X - Echo (mirror input payload)\n", OP_ECHO);
