@@ -129,13 +129,16 @@ void xrpc_response_frame_header_from_net(const uint8_t buf[8],
   r->frame_id = xrpc_res_fr_word2_frame_id(w2);
 }
 
-/* Serialize a vector on the network (network-order) */
 int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
                        const void *data, uint8_t *buf, size_t len,
                        size_t *written) {
+
+  *written = 0;
   // sanity check
-  if (!r || !data || !buf || len == 0 || !written)
-    return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
+  if (!r || !buf) return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
+
+  // in case of empty buffer of null pointer do nothing
+  if (len == 0 || !data) return XRPC_SUCCESS;
 
   enum xrpc_dtype_base dtyb = xrpc_req_fr_get_dtypb_from_opinfo(r->opinfo);
   enum xrpc_dtype_category dtyc = xrpc_req_fr_get_dtypc_from_opinfo(r->opinfo);
@@ -200,9 +203,12 @@ int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
                          const uint8_t *buf, size_t len, void *data,
                          size_t *read) {
 
+  *read = 0;
   // sanity check
-  if (!r || !data || !buf || len == 0 || !read)
-    return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
+  if (!r || !buf) return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
+
+  // in case of empty buffer of null pointer do nothing
+  if (len == 0 || !data) return XRPC_SUCCESS;
 
   enum xrpc_dtype_base dtyb = xrpc_req_fr_get_dtypb_from_opinfo(r->opinfo);
   enum xrpc_dtype_category dtyc = xrpc_req_fr_get_dtypc_from_opinfo(r->opinfo);
