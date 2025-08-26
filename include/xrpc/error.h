@@ -10,17 +10,23 @@
 /*
  * RPC API Server errors
  *
- * From -1 to - 99
+ * From -1 to - 49
  */
 
 #define XRPC_API_ERR_ALLOC -1
-#define XRPC_API_ERR_BAD_OPID -2
 #define XRPC_API_ERR_HANDLER_ALREADY_REGISTERED -3
 #define XRPC_API_ERR_INVALID_ARGS -5
 #define XRPC_API_ERR_INVALID_TRANSPORT -6
-#define XRPC_API_ERR_SERIALIZATION -7
-#define XRPC_API_ERR_OVERFLOW -8
-#define XRPC_API_ERR_UNSUPPORTED_DTYPE -9
+
+/*
+ * Protocol ERROR
+ * From -50 to -99
+ */
+
+#define XRPC_PROTO_ERR_INVALID_DTYPE -50
+#define XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS -51
+#define XRPC_PROTO_ERR_VERSION_MISMATCH -52
+#define XRPC_PROTO_ERR_INVALID_OP -53
 
 /*
  * Transport related errors. These can be return from connection oriented
