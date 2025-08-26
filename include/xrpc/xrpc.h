@@ -137,7 +137,9 @@ int xrpc_client_connect(struct xrpc_client *cli,
 int xrpc_client_disconnect(struct xrpc_client *cli);
 
 /*
- * @brief Perform a synchronous RPC call.
+ * @brief Perform a synchronous RPC call. Since the protocol is batch-aware a
+ * synchronous request means creating a batch with size 1, send a single frame
+ * request and wait for the repsonse.
  *
  * @param[in] cli           Client instance.
  * @param[in] op            Operation ID
@@ -146,10 +148,11 @@ int xrpc_client_disconnect(struct xrpc_client *cli);
  * @param[out] response     Pointer to allocated response (caller must free)
  * @return XRPC_SUCCESS on success, error code on failure.
  */
-struct xrpc_response;
 int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
-                          const void *request_data, size_t request_size,
-                          struct xrpc_response_frame **response);
+                          const void *request_data, size_t data_len,
+                          enum xrpc_dtype_base dtyb,
+                          enum xrpc_dtype_category dtyc,
+                          struct xrpc_response_frame *out_resp);
 
 /*
  * @brief Close client and free resources.

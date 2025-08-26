@@ -26,6 +26,18 @@ enum {
 };
 
 /*
+ * Response preamble fields (packed into a preamble byte):
+ *  bits 0-3 : TYPE  (4 bits)
+ *  bits 4-7 : VER   (4 bits)
+ */
+enum {
+  XRPC_RES_TYPE_SHIFT = 0,
+  XRPC_RES_TYPE_MASK = 0x0Fu,
+  XRPC_RES_VER_SHIFT = 4,
+  XRPC_RES_VER_MASK = 0x0Fu
+};
+
+/*
  * Request frame opinfo bit layout (MSB..LSB):
  *  bits  1-0 : DC (2 bits)
  *  bits  5-2 : DTYPB (4 bits)
@@ -121,6 +133,21 @@ static inline uint8_t xrpc_req_get_ver_from_preamble(uint8_t preamble) {
   return (uint8_t)((preamble >> XRPC_REQ_VER_SHIFT) & XRPC_REQ_VER_MASK);
 }
 
+static inline void xrpc_req_set_version(uint8_t *preamble_ptr,
+                                        uint8_t version) {
+  uint8_t v = *preamble_ptr;
+  v &= (uint8_t) ~((uint8_t)XRPC_REQ_VER_MASK << XRPC_REQ_VER_SHIFT);
+  v |= (uint8_t)(((uint8_t)version & XRPC_REQ_VER_MASK) << XRPC_REQ_VER_SHIFT);
+  *preamble_ptr = v;
+}
+
+static inline void xrpc_req_set_type(uint8_t *preamble_ptr, uint8_t type) {
+  uint8_t v = *preamble_ptr;
+  v &= (uint8_t) ~((uint8_t)XRPC_REQ_TYPE_MASK << XRPC_REQ_TYPE_SHIFT);
+  v |= (uint8_t)(((uint8_t)type & XRPC_REQ_TYPE_MASK) << XRPC_REQ_TYPE_SHIFT);
+  *preamble_ptr = v;
+}
+
 /*
  * ---------------------------
  * Response: word-level helpers
@@ -158,6 +185,35 @@ static inline uint16_t xrpc_res_word2_status(uint32_t word2) {
 
 static inline uint16_t xrpc_res_word2_payload_size(uint32_t word2) {
   return (uint16_t)(word2 & 0xFFFFu);
+}
+
+/*
+ * ---------------------------
+ * Response: preamble helpers
+ * ---------------------------
+ */
+
+static inline uint8_t xrpc_res_get_type_from_preamble(uint8_t preamble) {
+  return (uint8_t)((preamble >> XRPC_RES_TYPE_SHIFT) & XRPC_RES_TYPE_MASK);
+}
+
+static inline uint8_t xrpc_res_get_ver_from_preamble(uint8_t preamble) {
+  return (uint8_t)((preamble >> XRPC_RES_VER_SHIFT) & XRPC_RES_VER_MASK);
+}
+
+static inline void xrpc_res_set_version(uint8_t *preamble_ptr,
+                                        uint8_t version) {
+  uint8_t v = *preamble_ptr;
+  v &= (uint8_t) ~((uint8_t)XRPC_RES_VER_MASK << XRPC_RES_VER_SHIFT);
+  v |= (uint8_t)(((uint8_t)version & XRPC_RES_VER_MASK) << XRPC_RES_VER_SHIFT);
+  *preamble_ptr = v;
+}
+
+static inline void xrpc_res_set_type(uint8_t *preamble_ptr, uint8_t type) {
+  uint8_t v = *preamble_ptr;
+  v &= (uint8_t) ~((uint8_t)XRPC_RES_TYPE_MASK << XRPC_RES_TYPE_SHIFT);
+  v |= (uint8_t)(((uint8_t)type & XRPC_RES_TYPE_MASK) << XRPC_RES_TYPE_SHIFT);
+  *preamble_ptr = v;
 }
 
 /*

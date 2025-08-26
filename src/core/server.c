@@ -14,6 +14,7 @@
 
 /* Configuration constants */
 #define MAX_INFLIGHT_FRAMES 64
+#define MAX_INFLIGHT_BATCH 64
 #define MAX_HANDLERS 64
 #define MAX_PAYLOAD_ALLOWED (16 * 1024 * 1024) /* 16 MiB, tune as needed */
 #define SMALL_BUF_SIZE 256
@@ -539,7 +540,6 @@ static void connection_context_schedule_next_operation(
      * 2. There are still frames remaining to read
      * 3. We have available inflight slots (remaining > 0)
      */
-    // limit the number of frame in flight
     if (inflight > MAX_INFLIGHT_FRAMES || remaining == 0) {
 
       xrpc_io_operation_free(ctx->server->io, op);
@@ -688,7 +688,7 @@ static void io_connection_completed(struct xrpc_io_operation *op) {
     handle_request_header(ctx);
     break;
   case XRPC_CONN_STATE_WRITE_HEADER:
-    ctx->state = XRPC_CONN_STATE_COMPLETED;
+    ctx->state = XRPC_CONN_STATE_READ_HEADER;
     break;
   default:
     break;
@@ -731,7 +731,7 @@ static void io_frame_completed(struct xrpc_io_operation *op) {
                                        fctx->request_header);
 
     // compute payload size
-    size_t payload_len = xrpc_calculate_frame_data_size(fctx->request_header);
+    size_t payload_len = xrpc_calculate_req_fr_data_size(fctx->request_header);
     if (payload_len == 0) {
       // network error: drop this frame, release slot and fctx
       xrpc_io_operation_free(server->io, op);
@@ -787,7 +787,7 @@ static void handle_request_header(struct xrpc_connection_context *ctx) {
 
   uint8_t proto_version = xrpc_req_get_ver_from_preamble(hdr->preamble);
   enum xrpc_request_type msg_type =
-      xrpc_req_get_ver_from_preamble(hdr->preamble);
+      xrpc_req_get_type_from_preamble(hdr->preamble);
 
   // if protocol mismatch return an error
   if (proto_version != XRPC_PROTO_VERSION) {
@@ -803,16 +803,17 @@ static void handle_request_header(struct xrpc_connection_context *ctx) {
         __atomic_fetch_add(&ctx->server->next_batch_id, 1, __ATOMIC_RELAXED);
     ctx->response_header->batch_id = batch_id;
     ctx->response_header->payload_size = 0;
-    ctx->response_header->status = XRPC_RESP_STATUS_ACK;
+    xrpc_res_set_type(&ctx->response_header->preamble, XRPC_RESP_TYPE_ACK);
+    ctx->state = XRPC_CONN_STATE_WRITE_HEADER;
   } break;
   case XRPC_REQUEST_SERVER_INFO:
-    ctx->response_header->status = XRPC_RESP_STATUS_ACK;
+    xrpc_res_set_type(&ctx->response_header->preamble, XRPC_RESP_TYPE_ACK);
     ctx->state = XRPC_CONN_STATE_WRITE_HEADER;
     ctx->last_error = XRPC_SUCCESS;
     ctx->response_header->payload_size = 0;
     break;
   case XRPC_REQUEST_SERVER_PING:
-    ctx->response_header->status = XRPC_RESP_STATUS_ACK;
+    xrpc_res_set_type(&ctx->response_header->preamble, XRPC_RESP_TYPE_ACK);
     ctx->state = XRPC_CONN_STATE_WRITE_HEADER;
     ctx->last_error = XRPC_SUCCESS;
     ctx->response_header->payload_size = 0;

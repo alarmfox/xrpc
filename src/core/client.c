@@ -27,63 +27,61 @@ static const struct xrpc_client_connection_ops *connection_ops_map[] = {
 /*
  * Helper function to send exactly n bytes
  */
-// static int send_exact_n(struct xrpc_client_connection *conn, const void *buf,
-//                         size_t len) {
-//   if (!conn || !buf || len == 0) { return XRPC_CLIENT_ERR_INVALID_CONFIG; }
-//
-//   size_t bytes_written = 0, total_written = 0;
-//   int ret = XRPC_SUCCESS;
-//   const uint8_t *data = (const uint8_t *)buf;
-//
-//   while (total_written < len) {
-//     ret = conn->ops->send(conn, data + total_written, len - total_written,
-//                           &bytes_written);
-//
-//     if (ret == XRPC_TRANSPORT_ERR_WOULD_BLOCK) {
-//       // For blocking client, we should not get this, but handle gracefully
-//       continue;
-//     } else if (ret != XRPC_SUCCESS) {
-//       XRPC_DEBUG_PRINT("send failed: %d", ret);
-//       return ret;
-//     }
-//
-//     total_written += bytes_written;
-//     bytes_written = 0; // Reset for next iteration
-//   }
-//
-//   return XRPC_SUCCESS;
-// }
-//
-// /*
-//  * Helper function to receive exactly n bytes
-//  */
-// static int recv_exact_n(struct xrpc_client_connection *conn, void *buf,
-//                         size_t len) {
-//   if (!conn || !buf || len == 0) { return XRPC_CLIENT_ERR_INVALID_CONFIG; }
-//
-//   size_t bytes_read = 0, total_read = 0;
-//   int ret = XRPC_SUCCESS;
-//   uint8_t *data = (uint8_t *)buf;
-//
-//   while (total_read < len) {
-//     ret =
-//         conn->ops->recv(conn, data + total_read, len - total_read,
-//         &bytes_read);
-//
-//     if (ret == XRPC_TRANSPORT_ERR_WOULD_BLOCK) {
-//       // For blocking client, we should not get this, but handle gracefully
-//       continue;
-//     } else if (ret != XRPC_SUCCESS) {
-//       XRPC_DEBUG_PRINT("recv failed: %d", ret);
-//       return ret;
-//     }
-//
-//     total_read += bytes_read;
-//     bytes_read = 0; // Reset for next iteration
-//   }
-//
-//   return XRPC_SUCCESS;
-// }
+static int send_exact_n(struct xrpc_client_connection *conn, const void *buf,
+                        size_t len) {
+  if (!conn || !buf || len == 0) { return XRPC_CLIENT_ERR_INVALID_CONFIG; }
+
+  size_t bytes_written = 0, total_written = 0;
+  int ret = XRPC_SUCCESS;
+  const uint8_t *data = (const uint8_t *)buf;
+
+  while (total_written < len) {
+    ret = conn->ops->send(conn, data + total_written, len - total_written,
+                          &bytes_written);
+
+    if (ret == XRPC_TRANSPORT_ERR_WOULD_BLOCK) {
+      // For blocking client, we should not get this, but handle gracefully
+      continue;
+    } else if (ret != XRPC_SUCCESS) {
+      XRPC_DEBUG_PRINT("send failed: %d", ret);
+      return ret;
+    }
+
+    total_written += bytes_written;
+    bytes_written = 0; // Reset for next iteration
+  }
+
+  return XRPC_SUCCESS;
+}
+/*
+ * Helper function to receive exactly n bytes
+ */
+static int recv_exact_n(struct xrpc_client_connection *conn, void *buf,
+                        size_t len) {
+  if (!conn || !buf || len == 0) { return XRPC_CLIENT_ERR_INVALID_CONFIG; }
+
+  size_t bytes_read = 0, total_read = 0;
+  int ret = XRPC_SUCCESS;
+  uint8_t *data = (uint8_t *)buf;
+
+  while (total_read < len) {
+    ret =
+        conn->ops->recv(conn, data + total_read, len - total_read, &bytes_read);
+
+    if (ret == XRPC_TRANSPORT_ERR_WOULD_BLOCK) {
+      // For blocking client, we should not get this, but handle gracefully
+      continue;
+    } else if (ret != XRPC_SUCCESS) {
+      XRPC_DEBUG_PRINT("recv failed: %d", ret);
+      return ret;
+    }
+
+    total_read += bytes_read;
+    bytes_read = 0; // Reset for next iteration
+  }
+
+  return XRPC_SUCCESS;
+}
 //
 /*
  * @brief Connect to an XRPC server.
@@ -163,16 +161,139 @@ int xrpc_client_connect(struct xrpc_client *cli,
  * @return XRPC_SUCCESS on success, error code on failure.
  */
 int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
-                          const void *request_data, size_t request_size,
-                          struct xrpc_response_frame **out_resp) {
-  (void)cli;
-  (void)op;
-  (void)request_data;
-  (void)request_size;
+                          const void *request_data, size_t data_len,
+                          enum xrpc_dtype_base dtyb,
+                          enum xrpc_dtype_category dtyc,
+                          struct xrpc_response_frame *out_resp) {
   (void)out_resp;
-  if (!cli) return XRPC_API_ERR_INVALID_ARGS;
+  if (!cli || !out_resp) return XRPC_API_ERR_INVALID_ARGS;
 
-  return XRPC_SUCCESS;
+  // create a request header
+  uint8_t scratch[8], *request_data_raw = NULL;
+  struct xrpc_request_header request_header = {0};
+  struct xrpc_request_frame_header request_fr_header = {0};
+  struct xrpc_response_frame_header response_fr_header = {0};
+  struct xrpc_response_header response_header = {0};
+  size_t bytes_written = 0, total_response_size = 0, total_request_size = 0;
+  int ret;
+
+  xrpc_req_set_version(&request_header.preamble, XRPC_PROTO_VERSION);
+  xrpc_req_set_type(&request_header.preamble, XRPC_REQUEST_BATCH_INIT);
+
+  // send the request header
+  xrpc_request_header_to_net(&request_header, scratch);
+
+  ret = send_exact_n(cli->conn, scratch, 8);
+
+  if (ret != XRPC_SUCCESS) return ret;
+
+  // get the response header
+  ret = recv_exact_n(cli->conn, scratch, 8);
+
+  if (ret != XRPC_SUCCESS) return ret;
+
+  xrpc_response_header_from_net(scratch, &response_header);
+
+  uint8_t version = xrpc_res_get_ver_from_preamble(response_header.preamble);
+  uint8_t type = xrpc_res_get_type_from_preamble(response_header.preamble);
+
+  if (version != XRPC_PROTO_VERSION) return XRPC_PROTO_ERR_VERSION_MISMATCH;
+
+  assert(type == XRPC_RESP_TYPE_ACK);
+
+  xrpc_req_set_type(&request_header.preamble, XRPC_REQUEST_BATCH_START);
+  request_header.batch_id = response_header.batch_id;
+  request_header.batch_size = 1;
+  memset(&request_header.reserved, 0, 2);
+
+  // send the request header
+  xrpc_request_header_to_net(&request_header, scratch);
+  ret = send_exact_n(cli->conn, scratch, 8);
+  if (ret != XRPC_SUCCESS) return ret;
+
+  // send the request frame
+  xrpc_req_fr_set_opcode(&request_fr_header.opinfo, op);
+  // TODO: adjust scale based on payload size
+  xrpc_req_fr_set_scale(&request_fr_header.opinfo, 0);
+  xrpc_req_fr_set_dtypb(&request_fr_header.opinfo, dtyb);
+  xrpc_req_fr_set_dtypc(&request_fr_header.opinfo, dtyc);
+
+  request_fr_header.batch_id = request_header.batch_id;
+  request_fr_header.frame_id = 1;
+  request_fr_header.size_params = data_len;
+
+  total_request_size = xrpc_calculate_req_fr_data_size(&request_fr_header);
+
+  // serialize and send the header and the body
+  request_data_raw = malloc(total_request_size);
+  if (!request_data_raw) return XRPC_API_ERR_ALLOC;
+
+  xrpc_request_frame_header_to_net(&request_fr_header, scratch);
+  ret = send_exact_n(cli->conn, scratch, 8);
+
+  ret = xrpc_vector_to_net(&request_fr_header, request_data, request_data_raw,
+                           total_request_size, &bytes_written);
+
+  if (ret != XRPC_SUCCESS) {
+    free(request_data_raw);
+    request_data_raw = NULL;
+    return ret;
+  }
+  ret = send_exact_n(cli->conn, request_data_raw, total_request_size);
+
+  if (ret != XRPC_SUCCESS) {
+    free(request_data_raw);
+    request_data_raw = NULL;
+    return ret;
+  }
+
+  ret = recv_exact_n(cli->conn, scratch, 8);
+
+  if (ret != XRPC_SUCCESS) {
+    free(request_data_raw);
+    request_data_raw = NULL;
+    return ret;
+  }
+
+  xrpc_response_frame_header_from_net(scratch, &response_fr_header);
+
+  uint8_t status =
+      xrpc_res_fr_get_status_from_opinfo(response_fr_header.opinfo);
+
+  if (status != 0) {
+    free(request_data_raw);
+    request_data_raw = NULL;
+    return ret;
+  }
+
+  // TODO: assert the server is sending what we expect:
+  // - dtyb
+  // - dtyc
+  assert(response_fr_header.batch_id == request_fr_header.batch_id);
+  assert(response_fr_header.frame_id == request_fr_header.frame_id);
+
+  total_response_size = xrpc_calculate_res_fr_data_size(&response_fr_header);
+
+  // reuse request data buffer
+  assert(total_request_size >= total_response_size);
+
+  ret = recv_exact_n(cli->conn, request_data_raw, total_response_size);
+
+  if (ret != XRPC_SUCCESS) {
+    free(request_data_raw);
+    request_data_raw = NULL;
+    return ret;
+  }
+
+  // THIS IS BAD
+  ret = xrpc_vector_from_net(
+      (struct xrpc_request_frame_header *)&response_fr_header, request_data_raw,
+      total_response_size, out_resp->data, &bytes_written);
+
+  free(request_data_raw);
+  request_data_raw = NULL;
+
+  return ret;
 }
 
 /*
@@ -212,6 +333,12 @@ bool xrpc_client_is_connected(const struct xrpc_client *cli) {
   return cli->status == XRPC_CLIENT_CONNECTED;
 }
 
+/*
+ * @brief Connect to an XRPC server.
+ *
+ * @param[in] cli  The client instance.
+ * @return 0 on success, -1 on error.
+ */
 int xrpc_client_disconnect(struct xrpc_client *cli) {
   if (!cli) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 

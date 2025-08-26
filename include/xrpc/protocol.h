@@ -96,9 +96,8 @@ enum xrpc_dtype_base {
  * * SCALE (4 bit): number to scale the matrix/vector dimension;
  * * DTYPB (4 bit): data type base. One of `xrpc_dtype_base`
  * * DC (2 bit): data type category. One of `xrpc_dtype_category`
- * * SIZE PARAMS (14 bit):
- *     - DC = XRPC_DTYPE_CAT_SCALAR: it must be 1;
- *     - DC = XRPC_DTYPE_CAT_VECTOR: represents the size of the
+ * * SIZE PARAMS (16 bit):
+ *     - DC = XRPC_DTYPE_CAT_VECTOR: represents the number of elements the
  * array;
  *     - DC = XRPC_DTYPE_CAT_MATRIX: left 8 bits represent rows and right 8
  * bits represent cols
@@ -126,9 +125,9 @@ static_assert(sizeof(struct xrpc_request_frame_header) == 8,
               "Frame header must be exactly 8 bytes");
 
 enum xrpc_response_type {
-  XRPC_RESP_STATUS_BATCH_INIT = 1,
-  XRPC_RESP_STATUS_BATCH_REPORT = 2,
-  XRPC_RESP_STATUS_ACK = 3,
+  XRPC_RESP_TYPE_BATCH_INIT = 1,
+  XRPC_RESP_TYPE_BATCH_REPORT = 2,
+  XRPC_RESP_TYPE_ACK = 3,
 };
 
 /*
@@ -153,8 +152,9 @@ enum xrpc_response_type {
  *
  */
 struct xrpc_response_header {
-  uint16_t preamble; /* Protocol Version most significant 4 bit and message type
+  uint8_t preamble; /* Protocol Version most significant 4 bit and message type
                         4 bit*/
+  uint8_t reserved; /* Must be zero */
   uint16_t batch_id; /* Operation ID */
   uint16_t status;   /* Status ID */
   uint16_t payload_size; /* Size of the payload */
@@ -181,9 +181,8 @@ enum xrpc_fr_resp_status {
  * * SCALE (4 bit): number to scale the matrix/vector dimension;
  * * DTYPB (4 bit): data type base. One of `xrpc_dtype_base`
  * * DC (2 bit): data type category. One of `xrpc_dtype_category`
- * * SIZE PARAMS (14 bit):
- *     - DC = XRPC_DTYPE_CAT_SCALAR: it must be 1;
- *     - DC = XRPC_DTYPE_CAT_VECTOR: represents the size of the
+ * * SIZE PARAMS (16 bit):
+ *     - DC = XRPC_DTYPE_CAT_VECTOR: represents the number of elements of the
  * array;
  *     - DC = XRPC_DTYPE_CAT_MATRIX: left 8 bits represent rows and right 8
  * bits represent cols
@@ -250,12 +249,13 @@ static inline uint64_t xrpc_bswap64(uint64_t x) {
 #define xrpc_ntoh64(x) (x)
 #endif
 
-// Batch processing utilities
+// clang-format on
 static inline size_t
-xrpc_calculate_frame_data_size(const struct xrpc_request_frame_header *hdr) {
+xrpc_calculate_req_fr_data_size(const struct xrpc_request_frame_header *hdr) {
 
   enum xrpc_dtype_base dtypb = xrpc_req_fr_get_dtypb_from_opinfo(hdr->opinfo);
-  enum xrpc_dtype_category dtypc = xrpc_req_fr_get_dtypc_from_opinfo(hdr->opinfo);
+  enum xrpc_dtype_category dtypc =
+      xrpc_req_fr_get_dtypc_from_opinfo(hdr->opinfo);
   uint8_t scale = xrpc_req_fr_get_scale_from_opinfo(hdr->opinfo);
 
   size_t base_size = xrpc_dtypb_size(dtypb);
@@ -286,7 +286,42 @@ xrpc_calculate_frame_data_size(const struct xrpc_request_frame_header *hdr) {
   }
 }
 
-// clang-format on
+// Batch processing utilities
+static inline size_t
+xrpc_calculate_res_fr_data_size(const struct xrpc_response_frame_header *hdr) {
+
+  enum xrpc_dtype_base dtypb = xrpc_res_fr_get_dtypb_from_opinfo(hdr->opinfo);
+  enum xrpc_dtype_category dtypc =
+      xrpc_res_fr_get_dtypc_from_opinfo(hdr->opinfo);
+  uint8_t scale = xrpc_res_fr_get_scale_from_opinfo(hdr->opinfo);
+
+  size_t base_size = xrpc_dtypb_size(dtypb);
+  if (base_size == 0) return 0;
+
+  size_t scaled_size = base_size;
+  for (uint8_t i = 0; i < scale; i++) {
+    scaled_size *= 2; // Each scale doubles the size
+  }
+
+  switch (dtypc) {
+  case XRPC_DTYPE_CAT_VECTOR:
+    return scaled_size * hdr->size_params;
+
+  case XRPC_DTYPE_CAT_MATRIX: {
+    // size_params encodes rows in upper 8 bits, cols in lower 8 bits
+    uint8_t rows = (hdr->size_params >> 8) & 0xFF;
+    uint8_t cols = hdr->size_params & 0xFF;
+    return scaled_size * rows * cols;
+  }
+
+  case XRPC_DTYPE_CAT_TENSOR:
+    // For tensor, size_params represents total number of elements
+    return scaled_size * hdr->size_params;
+
+  default:
+    return 0;
+  }
+}
 /*
  * Utilities  to serialize and deserialize struct to and from the network.
  */
