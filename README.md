@@ -5,7 +5,7 @@
 
 ## Introduction
 A small (but very fun) project to explore RPC in C.
-The target of `xrpc` is to produce a `libxrpc` which users can be use in their own projects.
+The target of `xrpc` is to produce a `libxrpc` which users can use in their own projects.
 The goal is to explore and compare different implementations: from raw TCP sockets to RDMA.
 
 
