@@ -4,13 +4,12 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <stdint.h>
-#include <string.h>
 
 #include "xrpc/protocol_utils.h"
 
 /*
  * Usage: the client negotiate a batch identifier with the server. A batch is a
- * sequence of operation that the server performs without renegoatiating
+ * sequence of operations that the server performs without renegoatiating basic
  * paramters. For example, parameters could be security related.
  *
  * All data is exchanged through the network using the NETWORK ENDIANESS.
