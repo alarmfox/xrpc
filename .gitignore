@@ -11,6 +11,6 @@
 !/benchmark
 !/examples
 !/include
-!/scripts
 !/src
 !/test
+!/tools
