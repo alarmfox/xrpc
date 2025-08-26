@@ -1,4 +1,5 @@
 #include "xrpc/protocol.h"
+#include "xrpc/error.h"
 
 /* Serialize a vector on the network (network-order) */
 int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
