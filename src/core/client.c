@@ -211,3 +211,21 @@ bool xrpc_client_is_connected(const struct xrpc_client *cli) {
 
   return cli->status == XRPC_CLIENT_CONNECTED;
 }
+
+int xrpc_client_disconnect(struct xrpc_client *cli) {
+  if (!cli) return XRPC_CLIENT_ERR_INVALID_CONFIG;
+
+  if (cli->status != XRPC_CLIENT_CONNECTED || !cli->conn) {
+    return XRPC_SUCCESS;
+  }
+
+  if (cli->conn->ops && cli->conn->ops->disconnect) {
+    cli->conn->ops->disconnect(cli->conn);
+  }
+
+  cli->conn = NULL;
+  cli->status = XRPC_CLIENT_DISCONNECTED;
+  cli->last_error = XRPC_SUCCESS;
+
+  return XRPC_SUCCESS;
+}
