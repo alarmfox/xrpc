@@ -31,77 +31,10 @@ static void signal_handler(int sig) {
   printf("\nShutting down server...\n");
 }
 
-static int echo_handler(const struct xrpc_request *req,
-                        struct xrpc_response *res) {
-
-  res->hdr->status = XRPC_RESPONSE_SUCCESS;
-  res->hdr->payload_size = sizeof(uint64_t);
-
-  res->payload = malloc(sizeof(uint64_t));
-  memset(res->payload, 0, sizeof(uint64_t));
-  memcpy(res->payload, req->payload, sizeof(uint64_t));
-
-  return XRPC_SUCCESS;
-}
-
-/*
- * For demonstration purposes this sums just 2 uint64_t.
- */
-static int sum_handler(const struct xrpc_request *req,
-                       struct xrpc_response *res) {
-  if (req->hdr->payload_size != 16) {
-    res->hdr->status = XRPC_RESPONSE_INVALID_PARAMS;
-    res->hdr->payload_size = 0;
-    return XRPC_SUCCESS;
-  }
-  uint64_t *p = (uint64_t *)req->payload;
-
-  uint64_t op1 = *p++;
-  uint64_t op2 = *p;
-  uint64_t c = op1 + op2;
-
-  // write the header and populate the result
-  res->hdr->status = XRPC_RESPONSE_SUCCESS;
-  res->hdr->payload_size = sizeof(uint64_t);
-  res->payload = malloc(res->hdr->payload_size);
-
-  memcpy(res->payload, &c, sizeof(uint64_t));
-
-  return XRPC_SUCCESS;
-}
-
-/*
- * Performs the dot product between two arrays.
- * Arrays are sent one after the other. The array size must
- * req->hdr->payload_size / 2 For now assume uint64_t arrays. Since
- * req->hdr->payload_size is bytes, to get the number of elements we need to
- * divide by the sizeof(type)
- */
-static int dot_product_handler(const struct xrpc_request *req,
-                               struct xrpc_response *res) {
-
-  // We cannot construct 2 arrays from an odd size
-  if (req->hdr->payload_size % (2 * sizeof(uint64_t)) != 0) {
-    res->hdr->status = XRPC_RESPONSE_INVALID_PARAMS;
-    res->hdr->payload_size = 0;
-
-    return XRPC_SUCCESS;
-  }
-
-  size_t arr_size = req->hdr->payload_size / (2 * sizeof(uint64_t));
-  uint64_t *p = (uint64_t *)req->payload;
-  uint64_t prod = 0;
-
-  for (size_t i = 0; i < arr_size; i++) {
-    prod += p[i] * p[i + arr_size];
-  }
-
-  res->hdr->status = XRPC_RESPONSE_SUCCESS;
-  res->hdr->payload_size = sizeof(uint64_t);
-  res->payload = malloc(res->hdr->payload_size);
-
-  memcpy(res->payload, &prod, sizeof(uint64_t));
-
+static int echo_handler(const struct xrpc_frame_request *rq,
+                        struct xrpc_frame_response *rs) {
+  (void)rq;
+  (void)rs;
   return XRPC_SUCCESS;
 }
 
@@ -175,27 +108,11 @@ int main(void) {
     goto exit;
   }
 
-  if (xrpc_server_register(srv, OP_SUM, sum_handler, XRPC_RF_OVERWRITE) !=
-      XRPC_SUCCESS) {
-    printf("cannot register sum handler\n");
-    goto exit;
-  }
-
-  if (xrpc_server_register(srv, OP_DOT_PROD, dot_product_handler,
-                           XRPC_RF_OVERWRITE) != XRPC_SUCCESS) {
-    printf("cannot register dot product handler\n");
-    goto exit;
-  }
-
   printf("\nServer started successfully!\n");
   print_config(&cfg);
 
   printf("Available operations:\n");
   printf("  0x%02X - Echo (mirror input payload)\n", OP_ECHO);
-  printf("  0x%02X - Sum (sums 2 uint64_t)\n", OP_SUM);
-  printf("  0x%02X - Dot Product (performs dot product on equally size "
-         "uint64_t vectors)\n",
-         OP_DOT_PROD);
   xrpc_server_run(srv);
 
 exit:
