@@ -8,7 +8,6 @@ AR      = ar
 ARFLAGS = rcs
 
 CFLAGS  = -std=c11 -Wall -Wextra -Werror
-CFLAGS  = -std=c11 -Wall -Wextra
 CFLAGS += -Iinclude/ -Ibenchmark/
 
 ifeq ($(DEBUG),1)
