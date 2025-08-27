@@ -131,6 +131,8 @@ xrpc_tcpv4_server_build_default_config(const char *address, uint16_t port,
   tcp_config.addr.sin_family = AF_INET;
   tcp_config.addr.sin_port = htons(port);
 
+  tcp_config.connection_pool_size = 128;
+
   // copy all the created config into the result
   memcpy(&config->transport.config.tcp, &tcp_config,
          sizeof(struct xrpc_transport_tcp_config));
