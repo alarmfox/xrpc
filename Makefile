@@ -66,13 +66,15 @@ client: $(CLI_OBJS) $(LIB_OBJS)
 ## benchmark: builds the benchmark application
 benchmark: $(BENCH_BINS)
 
-## test: builds and runs all tests
+## test: builds all tests
 test: $(TEST_BINS)
+
+## test-run: runs all the test
+test-run: test
 	@for t in $(TEST_BINS); do \
 		echo "Running $$t..."; \
 		./$$t || exit 1; \
 	done
-	@echo "All tests passed ✅"
 
 # =========================
 #  Pattern Rules
