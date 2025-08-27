@@ -131,26 +131,23 @@ void xrpc_response_frame_header_from_net(const uint8_t buf[8],
   r->frame_id = xrpc_res_fr_word2_frame_id(w2);
 }
 
-int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
-                       const void *data, uint8_t *buf, size_t len,
-                       size_t *written) {
+int xrpc_vector_to_net(enum xrpc_dtype_base dtyb, enum xrpc_dtype_category dtyc,
+                       size_t size_params, const void *data, uint8_t *buf,
+                       size_t len, size_t *written) {
+  // sanity check
+  if (!buf || !written) return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
 
   *written = 0;
-  // sanity check
-  if (!r || !buf) return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
 
   // in case of empty buffer of null pointer do nothing
   if (len == 0 || !data) return XRPC_SUCCESS;
-
-  enum xrpc_dtype_base dtyb = xrpc_req_fr_get_dtypb_from_opinfo(r->opinfo);
-  enum xrpc_dtype_category dtyc = xrpc_req_fr_get_dtypc_from_opinfo(r->opinfo);
 
   // the data category must be array
   if (dtyc != XRPC_DTYPE_CAT_VECTOR) return XRPC_PROTO_ERR_INVALID_DTYPE;
 
   // ignore scale for now
   size_t elem_size = xrpc_dtypb_size(dtyb);
-  size_t total_size = elem_size * r->size_params;
+  size_t total_size = elem_size * size_params;
 
   if (len < total_size) return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
 
@@ -163,7 +160,7 @@ int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
   case XRPC_BASE_INT16:
   case XRPC_BASE_UINT16: {
     uint16_t t;
-    for (size_t i = 0; i < r->size_params; ++i) {
+    for (size_t i = 0; i < size_params; ++i) {
       memcpy(&t, (const uint8_t *)data + i * 2, 2);
       t = htons(t);
       memcpy(buf + i * 2, &t, 2);
@@ -174,7 +171,7 @@ int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
   case XRPC_BASE_INT32:
   case XRPC_BASE_FLOAT32:
   case XRPC_BASE_DOUBLE32: {
-    for (size_t i = 0; i < r->size_params; ++i) {
+    for (size_t i = 0; i < size_params; ++i) {
       uint32_t v;
       memcpy(&v, (const uint8_t *)data + i * 4, 4);
       v = htonl(v);
@@ -186,7 +183,7 @@ int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
   case XRPC_BASE_INT64:
   case XRPC_BASE_FLOAT64:
   case XRPC_BASE_DOUBLE64: {
-    for (size_t i = 0; i < r->size_params; ++i) {
+    for (size_t i = 0; i < size_params; ++i) {
       uint64_t v;
       memcpy(&v, (const uint8_t *)data + i * 8, 8);
       v = xrpc_hton64(v);
@@ -201,26 +198,24 @@ int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
 }
 
 /* Deerialize a vector from the network (host-order) */
-int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
+int xrpc_vector_from_net(enum xrpc_dtype_base dtyb,
+                         enum xrpc_dtype_category dtyc, size_t size_params,
                          const uint8_t *buf, size_t len, void *data,
                          size_t *read) {
 
-  *read = 0;
   // sanity check
-  if (!r || !buf) return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
+  if (!buf || !read) return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
+  *read = 0;
 
   // in case of empty buffer of null pointer do nothing
   if (len == 0 || !data) return XRPC_SUCCESS;
-
-  enum xrpc_dtype_base dtyb = xrpc_req_fr_get_dtypb_from_opinfo(r->opinfo);
-  enum xrpc_dtype_category dtyc = xrpc_req_fr_get_dtypc_from_opinfo(r->opinfo);
 
   // the data category must be array
   if (dtyc != XRPC_DTYPE_CAT_VECTOR) return XRPC_PROTO_ERR_INVALID_DTYPE;
 
   // ignore scale for now
   size_t elem_size = xrpc_dtypb_size(dtyb);
-  size_t total_size = elem_size * r->size_params;
+  size_t total_size = elem_size * size_params;
 
   if (len < total_size) return XRPC_PROTO_ERR_SERIALIZATION_INVALID_ARGS;
 
@@ -233,7 +228,7 @@ int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
   case XRPC_BASE_INT16:
   case XRPC_BASE_UINT16: {
     uint16_t t;
-    for (size_t i = 0; i < r->size_params; ++i) {
+    for (size_t i = 0; i < size_params; ++i) {
       memcpy(&t, buf + i * 2, 2);
       t = ntohs(t);
       memcpy((uint8_t *)data + i * 2, &t, 2);
@@ -244,7 +239,7 @@ int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
   case XRPC_BASE_INT32:
   case XRPC_BASE_FLOAT32:
   case XRPC_BASE_DOUBLE32: {
-    for (size_t i = 0; i < r->size_params; ++i) {
+    for (size_t i = 0; i < size_params; ++i) {
       uint32_t t;
       memcpy(&t, buf + i * 4, 4);
       t = htonl(t);
@@ -256,7 +251,7 @@ int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
   case XRPC_BASE_INT64:
   case XRPC_BASE_FLOAT64:
   case XRPC_BASE_DOUBLE64: {
-    for (size_t i = 0; i < r->size_params; ++i) {
+    for (size_t i = 0; i < size_params; ++i) {
       uint64_t t;
       memcpy(&t, buf + i * 8, 8);
       t = xrpc_hton64(t);

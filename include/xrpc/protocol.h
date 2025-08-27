@@ -348,11 +348,13 @@ void xrpc_response_frame_header_to_net(
 void xrpc_response_frame_header_from_net(const uint8_t buf[8],
                                          struct xrpc_response_frame_header *r);
 
-int xrpc_vector_to_net(const struct xrpc_request_frame_header *r,
-                       const void *data, uint8_t *buf, size_t len,
-                       size_t *written);
-int xrpc_vector_from_net(const struct xrpc_request_frame_header *r,
-                         const uint8_t *buf, size_t buflen, void *data,
+int xrpc_vector_to_net(enum xrpc_dtype_base dtyb, enum xrpc_dtype_category dtyc,
+                       size_t size_params, const void *data, uint8_t *buf,
+                       size_t len, size_t *written);
+
+int xrpc_vector_from_net(enum xrpc_dtype_base dtyb,
+                         enum xrpc_dtype_category dtyc, size_t size_params,
+                         const uint8_t *buf, size_t len, void *data,
                          size_t *read);
 
 #endif //! XRPC_PROTOCOL_H
