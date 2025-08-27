@@ -38,8 +38,10 @@ static int test_serder_request_frame_array(void) {
   fhdr.frame_id = 420;
 
   xrpc_request_frame_header_to_net(&fhdr, buf);
-  ret = xrpc_vector_to_net(&fhdr, (const void *)arr, buf + sizeof(fhdr),
-                           sizeof(buf) - sizeof(fhdr), &transferred);
+  ret = xrpc_vector_to_net(XRPC_BASE_UINT16, XRPC_DTYPE_CAT_VECTOR,
+                           fhdr.size_params, (const void *)arr,
+                           buf + sizeof(fhdr), sizeof(buf) - sizeof(fhdr),
+                           &transferred);
 
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "serialize should succeed");
   TEST_ASSERT_EQ(
@@ -69,7 +71,8 @@ static int test_serder_request_frame_array(void) {
   TEST_ASSERT_EQ(43, xrpc_req_fr_get_opcode_from_opinfo(fhdr.opinfo),
                  "op code should be 99");
 
-  ret = xrpc_vector_from_net(&fhdr, buf + sizeof(fhdr),
+  ret = xrpc_vector_from_net(XRPC_BASE_UINT16, XRPC_DTYPE_CAT_VECTOR,
+                             fhdr.size_params, buf + sizeof(fhdr),
                              sizeof(buf) - sizeof(fhdr), recv_vector,
                              &transferred);
 
@@ -100,8 +103,10 @@ static int test_serder_request_frame_uint8_array(void) {
   fhdr.frame_id = 8;
 
   xrpc_request_frame_header_to_net(&fhdr, buf);
-  ret = xrpc_vector_to_net(&fhdr, (const void *)arr, buf + sizeof(fhdr),
-                           sizeof(buf) - sizeof(fhdr), &transferred);
+  ret = xrpc_vector_to_net(XRPC_BASE_UINT8, XRPC_DTYPE_CAT_VECTOR,
+                           fhdr.size_params, (const void *)arr,
+                           buf + sizeof(fhdr), sizeof(buf) - sizeof(fhdr),
+                           &transferred);
 
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "serialize should succeed");
   TEST_ASSERT_EQ(sizeof(arr), transferred,
@@ -110,7 +115,8 @@ static int test_serder_request_frame_uint8_array(void) {
   memset(&fhdr, 0, sizeof fhdr);
   xrpc_request_frame_header_from_net(buf, &fhdr);
 
-  ret = xrpc_vector_from_net(&fhdr, buf + sizeof(fhdr),
+  ret = xrpc_vector_from_net(XRPC_BASE_UINT8, XRPC_DTYPE_CAT_VECTOR,
+                             fhdr.size_params, buf + sizeof(fhdr),
                              sizeof(buf) - sizeof(fhdr), recv_vector,
                              &transferred);
 
@@ -146,8 +152,10 @@ static int test_serder_request_frame_uint32_array(void) {
   fhdr.frame_id = 14;
 
   xrpc_request_frame_header_to_net(&fhdr, buf);
-  ret = xrpc_vector_to_net(&fhdr, (const void *)arr, buf + sizeof(fhdr),
-                           sizeof(buf) - sizeof(fhdr), &transferred);
+  ret = xrpc_vector_to_net(XRPC_BASE_UINT32, XRPC_DTYPE_CAT_VECTOR,
+                           fhdr.size_params, (const void *)arr,
+                           buf + sizeof(fhdr), sizeof(buf) - sizeof(fhdr),
+                           &transferred);
 
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret, "serialize should succeed");
   TEST_ASSERT_EQ(sizeof(arr), transferred,
@@ -156,7 +164,8 @@ static int test_serder_request_frame_uint32_array(void) {
   memset(&fhdr, 0, sizeof fhdr);
   xrpc_request_frame_header_from_net(buf, &fhdr);
 
-  ret = xrpc_vector_from_net(&fhdr, buf + sizeof(fhdr),
+  ret = xrpc_vector_from_net(XRPC_BASE_UINT32, XRPC_DTYPE_CAT_VECTOR,
+                             fhdr.size_params, buf + sizeof(fhdr),
                              sizeof(buf) - sizeof(fhdr), recv_vector,
                              &transferred);
 
@@ -191,7 +200,8 @@ static int test_serder_request_frame_empty_vector(void) {
 
   xrpc_request_frame_header_to_net(&fhdr, buf);
   /* zero-length, but we still pass a valid buffer pointer */
-  ret = xrpc_vector_to_net(&fhdr, (const void *)NULL, buf + sizeof(fhdr),
+  ret = xrpc_vector_to_net(XRPC_BASE_UINT8, XRPC_DTYPE_CAT_VECTOR, 0,
+                           (const void *)NULL, buf + sizeof(fhdr),
                            sizeof(buf) - sizeof(fhdr), &transferred);
 
   /* Expect success and zero bytes transferred */
@@ -202,8 +212,9 @@ static int test_serder_request_frame_empty_vector(void) {
   memset(&fhdr, 0, sizeof fhdr);
   xrpc_request_frame_header_from_net(buf, &fhdr);
 
-  ret = xrpc_vector_from_net(&fhdr, buf + sizeof(fhdr),
-                             sizeof(buf) - sizeof(fhdr), NULL, &transferred);
+  ret = xrpc_vector_from_net(XRPC_BASE_UINT8, XRPC_DTYPE_CAT_VECTOR, 0,
+                             buf + sizeof(fhdr), sizeof(buf) - sizeof(fhdr),
+                             NULL, &transferred);
 
   TEST_ASSERT_EQ(XRPC_SUCCESS, ret,
                  "deserialize of zero-length vector should succeed");
