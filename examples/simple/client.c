@@ -78,14 +78,19 @@ static int client_vector_add(uint16_t *vec, uint16_t nelems,
 }
 
 int main(void) {
-  if (client_ensure_connected() != 0) goto exit;
 
   /* example vector */
   uint16_t v[] = {1000, 2000, 3000, 4000}; /* sum = 10000 */
   uint16_t n = (uint16_t)(sizeof(v) / sizeof(v[0]));
-
   uint64_t sum = 0;
-  if (client_vector_add(v, n, &sum) != 0) {
+  int ret;
+
+  ret = client_ensure_connected();
+
+  if (ret != 0) goto exit;
+
+  ret = client_vector_add(v, n, &sum);
+  if (ret != 0) {
     fprintf(stderr, "vector_add RPC failed\n");
     goto exit;
   }

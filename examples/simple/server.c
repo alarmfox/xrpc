@@ -93,7 +93,6 @@ int main(void) {
   config.io = iocfg;
   xrpc_tcpv4_server_build_default_config(address, port, &config);
   config.max_concurrent_requests = 128;
-  config.transport.config.tcp.connection_pool_size = 1024;
 
   // Set up signal handling for clean shutdown
   signal(SIGINT, signal_handler);
