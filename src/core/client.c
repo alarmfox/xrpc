@@ -231,7 +231,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
   xrpc_request_frame_header_to_net(&request_fr_header, scratch);
   ret = send_exact_n(cli->conn, scratch, 8);
 
-  ret = xrpc_vector_to_net(&request_fr_header, request_data, request_data_raw,
+  ret = xrpc_vector_to_net(dtyb, dtyc, data_len, request_data, request_data_raw,
                            total_request_size, &bytes_written);
 
   if (ret != XRPC_SUCCESS) {
@@ -285,10 +285,12 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
     return ret;
   }
 
-  // THIS IS BAD
-  ret = xrpc_vector_from_net(
-      (struct xrpc_request_frame_header *)&response_fr_header, request_data_raw,
-      total_response_size, out_resp->data, &bytes_written);
+  dtyb = xrpc_res_fr_get_dtypb_from_opinfo(response_fr_header.opinfo);
+  dtyc = xrpc_res_fr_get_dtypc_from_opinfo(response_fr_header.opinfo);
+
+  ret = xrpc_vector_from_net(dtyb, dtyc, response_fr_header.size_params,
+                             request_data_raw, total_response_size,
+                             out_resp->data, &bytes_written);
 
   free(request_data_raw);
   request_data_raw = NULL;
