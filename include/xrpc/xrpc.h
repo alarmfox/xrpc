@@ -54,7 +54,7 @@ enum xrpc_handler_register_flags {
   XRPC_RF_OVERWRITE = 1 << 0,
 };
 
-/**
+/*
  * @brief Register an RPC handler for a given method name.
  *
  * @param srv       Server instance.
@@ -65,7 +65,7 @@ enum xrpc_handler_register_flags {
 int xrpc_server_register(struct xrpc_server *srv, const size_t op,
                          xrpc_handler_fn handler, const int flags);
 
-/**
+/*
  * @brief Poll the server for new clients and requests, dispatch handlers, send
  * responses.
  *
@@ -78,7 +78,17 @@ int xrpc_server_register(struct xrpc_server *srv, const size_t op,
  */
 int xrpc_server_run(struct xrpc_server *srv);
 
-/**
+/*
+ * @brief Checks if the server is running
+ *
+ * @param[in] The server instance
+ *
+ * @return True if the server is running
+ * @return False otherwise
+ */
+bool xrpc_server_running(const struct xrpc_server *srv);
+
+/*
  * @brief Flags the server to stop if running
  *
  * TODO: make user to choice between a graceful shutdown or to force
@@ -88,7 +98,7 @@ int xrpc_server_run(struct xrpc_server *srv);
  */
 void xrpc_server_stop(struct xrpc_server *srv);
 
-/**
+/*
  * @brief Release server resources.
  *
  * @param srv  Server instance to free.
