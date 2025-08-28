@@ -105,6 +105,10 @@ int main(void) {
   struct xrpc_server_config config = {0};
   xrpc_tcpv4_server_build_default_config(address, port, &config.transport);
 
+  config.io.type = XRPC_IO_SYSTEM_BLOCKING;
+  config.io.max_concurrent_operations = 10;
+  config.max_concurrent_requests = 10;
+
   // Set up signal handling for clean shutdown
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
