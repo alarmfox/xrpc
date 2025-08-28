@@ -9,7 +9,7 @@ The target of `xrpc` is to produce a `libxrpc` which users can use in their own 
 The goal is to explore and compare different implementations: from raw TCP sockets to RDMA.
 
 
-## Usage (server only)
+## Usage
 
 The goal of the library is to provide a minimal API to integrate RPC functionalities into an existing project.
 Build the library:
@@ -26,75 +26,14 @@ cp -r include/ /path/to/project/include/
 cp libxrpc.a /path/to/project/lib
 ```
 
-### Example
-The following example is based from [server.c](./examples/tcp/server.c).
-```c
-// include library
-#include "xrpc/error.h"
-#include "xrpc/xrpc.h"
-
-#define OP_ECHO 0
-
-// declare an handler (response data will be freed after being sent by the caller)
-static int echo_handler(const struct xrpc_frame_request *rq,
-                        struct xrpc_frame_response *rs) {
-  (void)rq;
-  (void)rs;
-  return XRPC_SUCCESS;
-}
-
-int main(void) {
-  // declare a server with TCP transport and blocking I/O system.
-  struct xrpc_server *srv = NULL;
-  struct xrpc_transport_config tcfg =
-      XRPC_TCP_SERVER_DEFAULT_CONFIG(INADDR_LOOPBACK, 9000);
-  struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING};
-  struct xrpc_server_config cfg = {.tcfg = &tcfg, .iocfg = &iocfg};
-
-  tcfg.config.tcp.nonblocking = false;
-  tcfg.config.tcp.accept_timeout_ms = 100;
-  tcfg.config.tcp.connection_pool_size = 1024;
-
-  // create the server
-  if (xrpc_server_create(&srv, &cfg) != XRPC_SUCCESS) {
-    printf("cannot create xrpc_server\n");
-    goto exit;
-  }
-  printf("Creating XRPC Server on %s:%d\n", "127.0.0.1", 9000);
-
-  // register the handler 
-  if (xrpc_server_register(srv, OP_DUMMY, dummy_handler, XRPC_RF_OVERWRITE) !=
-      XRPC_SUCCESS) {
-    printf("cannot register dummy handler\n");
-    goto exit;
-  }
-  
-  printf("\nServer started successfully!\n");
-  
-  printf("Available operations:\n");
-  printf("  0x%02X - Echo (mirror input payload)\n", OP_ECHO);
-
-  // run the server
-  xrpc_server_run(srv);
-
-// free resources
-exit:
-  if (srv) {
-    xrpc_server_free(srv);
-    srv = NULL;
-  }
-
-  return 0;
-}
-
-```
+For examples, refer to the [examples](./examples/) folder.
 
 
 ## Testing
 Execute all the available tests in `test/` using:
 
 ```sh
-make test
+make test-run
 ```
 
 ## Benchmarking

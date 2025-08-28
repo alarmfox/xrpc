@@ -8,6 +8,7 @@
 !/.gitignore
 !/Makefile
 !/README.md
+!/PROTOCOL.md
 !/benchmark
 !/examples
 !/include
