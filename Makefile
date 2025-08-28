@@ -48,7 +48,7 @@ BENCH_BINS       := $(patsubst %.c,%,$(BENCH_PROG_SRCS))
 # =========================
 .PHONY: all clean help examples test benchmark
 
-all: libxrpc.a examples
+all: libxrpc.a examples test
 
 ## libxrpc.a: builds the library
 libxrpc.a: $(LIB_OBJS)
