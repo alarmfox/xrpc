@@ -302,9 +302,7 @@ int xrpc_server_run(struct xrpc_server *server) {
 
       // if the underlying connection is no longer valid. Put the request for
       // completion and free the resources
-      if (!connection_is_valid(ctx->conn) ||
-          ctx->state == XRPC_CONN_STATE_COMPLETED ||
-          ctx->last_error != XRPC_SUCCESS) {
+      if (!connection_is_valid(ctx->conn) || ctx->last_error != XRPC_SUCCESS) {
         connection_context_free(ctx);
         ctx = NULL;
         continue;
@@ -313,13 +311,13 @@ int xrpc_server_run(struct xrpc_server *server) {
       // step the state machine for the current connection context
       connection_context_schedule_next_operation(ctx);
 
-      // if the connection has completed free the resources, otherwise put it in
-      // the queue
-      if (ctx->state == XRPC_CONN_STATE_COMPLETED) {
+      // put the context in the queue if it's not been freed
+      if (ctx->state != XRPC_CONN_STATE_COMPLETED)
+        xrpc_ringbuf_push(server->connection_context_rb, ctx);
+      else {
         connection_context_free(ctx);
         ctx = NULL;
-      } else
-        xrpc_ringbuf_push(server->connection_context_rb, ctx);
+      }
     }
 
     /* Process frames ready */
@@ -330,12 +328,15 @@ int xrpc_server_run(struct xrpc_server *server) {
            xrpc_ringbuf_pop(server->frame_processing_rb, (void **)&fctx) ==
                XRPC_SUCCESS) {
 
+      // schedule next frame operation
       frame_context_schedule_next_operation(fctx);
 
-      if (fctx->state == XRPC_FRAME_STATE_COMPLETED) {
-        frame_context_free(fctx);
-      } else {
+      // put the context in the queue if it's not been freed
+      if (fctx->state != XRPC_FRAME_STATE_COMPLETED)
         xrpc_ringbuf_push(server->frame_processing_rb, fctx);
+      else {
+        frame_context_free(fctx);
+        fctx = NULL;
       }
     }
   }
@@ -537,13 +538,13 @@ static void connection_context_schedule_next_operation(
   // common setup for the operation
   op->conn = ctx->conn;
   op->ctx = ctx;
+  op->on_complete = io_connection_completed;
 
   switch (ctx->state) {
   case XRPC_CONN_STATE_READ_HEADER:
     op->type = XRPC_IO_READ;
     op->buf = ctx->request_header_raw;
     op->len = sizeof(struct xrpc_request_header);
-    op->on_complete = io_connection_completed;
     ctx->server->io->ops->schedule_operation(ctx->server->io, op);
     break;
 
@@ -713,8 +714,9 @@ frame_context_schedule_next_operation(struct xrpc_frame_context *fctx) {
     server->io->ops->schedule_operation(server->io, op);
     break;
   }
-  default:
+  case XRPC_FRAME_STATE_COMPLETED:
     xrpc_io_operation_free(server->io, op);
+    op = NULL;
     break;
   }
 }
@@ -774,7 +776,6 @@ static void io_frame_completed(struct xrpc_io_operation *op) {
   if (!op) return;
 
   struct xrpc_frame_context *fctx = op->ctx;
-  struct xrpc_connection_context *conn_ctx = fctx->conn_ctx;
   struct xrpc_server *server = fctx->conn_ctx->server;
 
   // If the operation has not been completed, schedule again
@@ -805,6 +806,7 @@ static void io_frame_completed(struct xrpc_io_operation *op) {
     if (payload_len == 0) {
       // network error: drop this frame, release slot and fctx
       xrpc_io_operation_free(server->io, op);
+      op = NULL;
       frame_context_free(fctx);
     } else if (payload_len > MAX_PAYLOAD_ALLOWED) {
       // TODO: return error
@@ -814,6 +816,7 @@ static void io_frame_completed(struct xrpc_io_operation *op) {
     fctx->request_size = payload_len;
 
     fctx->state = XRPC_FRAME_STATE_READ_BODY;
+    xrpc_io_operation_free(server->io, op);
     break;
   case XRPC_FRAME_STATE_READ_BODY: {
     // payload fully read into fctx->req_frame_data
@@ -851,38 +854,24 @@ static void io_frame_completed(struct xrpc_io_operation *op) {
 
     assert(ret == XRPC_SUCCESS);
 
-    xrpc_io_operation_free(conn_ctx->server->io, op);
     fctx->state = XRPC_FRAME_STATE_PROCESS;
     break;
   }
-  case XRPC_FRAME_STATE_PROCESS:
-    break;
   case XRPC_FRAME_STATE_WRITE_HEADER: {
-    uint16_t frames_remaining =
-        __atomic_load_n(&fctx->conn_ctx->frames_remaining, __ATOMIC_ACQUIRE);
     if (fctx->response_size > 0)
       fctx->state = XRPC_FRAME_STATE_WRITE_BODY;
-    else if (frames_remaining > 0)
-      fctx->state = XRPC_FRAME_STATE_READ_HEADER;
     else
       fctx->state = XRPC_FRAME_STATE_COMPLETED;
     break;
   }
   case XRPC_FRAME_STATE_WRITE_BODY: {
-    uint16_t frames_remaining =
-        __atomic_load_n(&fctx->conn_ctx->frames_remaining, __ATOMIC_ACQUIRE);
-    if (frames_remaining > 0)
-      fctx->state = XRPC_FRAME_STATE_READ_HEADER;
-    else
-      fctx->state = XRPC_FRAME_STATE_COMPLETED;
+    fctx->state = XRPC_FRAME_STATE_COMPLETED;
     break;
   }
-  case XRPC_FRAME_STATE_COMPLETED:
-    __atomic_sub_fetch(&conn_ctx->frames_remaining, 1, __ATOMIC_ACQUIRE);
-    xrpc_io_operation_free(conn_ctx->server->io, op);
-    frame_context_free(fctx);
+  default:
     break;
   }
+  if (op) xrpc_io_operation_free(server->io, op);
 }
 
 /*
@@ -1000,7 +989,6 @@ static void frame_process_request(struct xrpc_frame_context *fctx) {
   } else {
     /* Call the registered handler */
     int ret;
-    uint64_t sum = 10000;
     // allocate memory for response data
     fctx->response_data = malloc(8);
     xrpc_handler_fn handler = server->handlers[operation_id];
@@ -1024,7 +1012,5 @@ static void frame_process_request(struct xrpc_frame_context *fctx) {
     fctx->response_size = 8;
     fctx->last_error = XRPC_SUCCESS;
     fctx->response_header->size_params = 1;
-
-    memcpy(fctx->response_data, &sum, 8);
   }
 }
