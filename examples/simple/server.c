@@ -74,9 +74,9 @@ static void print_config(const struct xrpc_server_config *config) {
          tcp_config->nonblocking ? "enabled" : "disabled");
 
   PRINT_OPT_OR_DISABLED("TCP_KEEPIDLE           :", buf,
-                        tcp_config->keepalive_idle, "s");
+                        tcp_config->keepalive_idle_sec, "s");
   PRINT_OPT_OR_DISABLED("TCP_KEEPINTVL          :", buf,
-                        tcp_config->keepalive_interval, "s");
+                        tcp_config->keepalive_interval_sec, "s");
   PRINT_OPT_OR_DISABLED("TCP_KEEPCNT            :", buf,
                         tcp_config->keepalive_probes, "");
   PRINT_OPT_OR_DISABLED("SO_SNDTIMEO            :", buf,
@@ -88,7 +88,8 @@ static void print_config(const struct xrpc_server_config *config) {
   PRINT_OPT_OR_DISABLED("SO_SNDBUF              :", buf,
                         tcp_config->send_buffer_size, "bytes");
 
-  printf("  Connections pool size  : %d\n", tcp_config->connection_pool_size);
+  printf("  Connections pool size  : %lu\n",
+         config->transport.connection_pool_size);
   printf("  Requests pool size     : %lu\n", config->max_concurrent_requests);
   printf("  Max concurrent I/O ops : %lu\n",
          config->io.max_concurrent_operations);
@@ -102,12 +103,7 @@ int main(void) {
   uint16_t port = 9000;
 
   struct xrpc_server_config config = {0};
-  struct xrpc_io_system_config iocfg = {.type = XRPC_IO_SYSTEM_BLOCKING,
-                                        .max_concurrent_operations = 128};
-
-  config.io = iocfg;
-  xrpc_tcpv4_server_build_default_config(address, port, &config);
-  config.max_concurrent_requests = 128;
+  xrpc_tcpv4_server_build_default_config(address, port, &config.transport);
 
   // Set up signal handling for clean shutdown
   signal(SIGINT, signal_handler);

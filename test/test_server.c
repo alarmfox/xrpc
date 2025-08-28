@@ -69,18 +69,16 @@ static void *server_thread_func(void *arg) {
   struct xrpc_server_config config = {0};
   int ret;
 
-  ret = xrpc_tcpv4_server_build_default_config(TEST_SERVER_ADDR,
-                                               TEST_SERVER_PORT, &config);
+  ret = xrpc_tcpv4_server_build_default_config(
+      TEST_SERVER_ADDR, TEST_SERVER_PORT, &config.transport);
 
-  config.transport.config.tcp.reuseaddr = true;
-  config.transport.config.tcp.accept_timeout_ms = 10;
   config.io.type = XRPC_IO_SYSTEM_BLOCKING;
   config.max_concurrent_requests = 10;
   config.io.max_concurrent_operations = 10;
 
   // Initialize server
   ret = xrpc_server_init(&g_test_server, &config);
-  if (ret != XRPC_SUCCESS) { return NULL; }
+  if (ret != XRPC_SUCCESS) return NULL;
 
   // Register handlers
   xrpc_server_register(g_test_server, OP_VECTOR_ADD, mock_vector_add_handler,

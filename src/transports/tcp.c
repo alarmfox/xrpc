@@ -73,7 +73,7 @@ xrpc_transport_server_tcp_init(struct xrpc_transport **s,
   if (ret = listen(fd, args->listen_backlog), ret < 0)
     XRPC_PRINT_SYSCALL_ERR_AND_RETURN("listen", XRPC_TRANSPORT_ERR_LISTEN);
 
-  if (ret = xrpc_pool_init(&pool, args->connection_pool_size, conn_size),
+  if (ret = xrpc_pool_init(&pool, config->connection_pool_size, conn_size),
       ret != XRPC_SUCCESS)
     XRPC_PRINT_ERR_AND_RETURN("connection pool init error", ret);
 
@@ -516,16 +516,16 @@ xrpc_configure_tcp_server_socket(int fd,
       XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt SO_KEEPALIVE",
                                         XRPC_TRANSPORT_ERR_SOCKET);
 
-    if (c->keepalive_idle > 0) {
-      opt = c->keepalive_idle;
+    if (c->keepalive_idle_sec > 0) {
+      opt = c->keepalive_idle_sec;
       if (ret = setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &opt, sizeof(int)),
           ret < 0)
         XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt TCP_KEEPIDLE",
                                           XRPC_TRANSPORT_ERR_SOCKET);
     }
 
-    if (c->keepalive_interval > 0) {
-      opt = c->keepalive_interval;
+    if (c->keepalive_interval_sec > 0) {
+      opt = c->keepalive_interval_sec;
       if (ret = setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &opt, sizeof(int)),
           ret < 0)
         XRPC_PRINT_SYSCALL_ERR_AND_RETURN("setsockopt TCP_KEEPINTVL",
@@ -540,7 +540,7 @@ xrpc_configure_tcp_server_socket(int fd,
                                           XRPC_TRANSPORT_ERR_SOCKET);
 
       XRPC_DEBUG_PRINT("Keepalive enabled: idle=%ds, interval=%ds, probes=%d",
-                       c->keepalive_idle, c->keepalive_interval,
+                       c->keepalive_idle_sec, c->keepalive_interval_sec,
                        c->keepalive_probes);
     }
   }
