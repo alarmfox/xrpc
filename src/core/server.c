@@ -16,7 +16,7 @@
 #define MAX_INFLIGHT_FRAMES 64
 #define MAX_INFLIGHT_BATCH 64
 #define MAX_HANDLERS 64
-#define MAX_PAYLOAD_ALLOWED (16 * 1024 * 1024) /* 16 MiB, tune as needed */
+#define MAX_PAYLOAD_ALLOWED (16 * 1024 * 1024) /* 16 MiB */
 #define SMALL_BUF_SIZE 256
 #define DIRECT_PROCESSING
 
@@ -448,7 +448,7 @@ static int connection_context_create(struct xrpc_server *srv,
 }
 
 static void connection_context_free(struct xrpc_connection_context *ctx) {
-  if (!ctx) return;
+  if (!ctx || !ctx->conn) return;
 
   // Check if there are still frames in flight
   uint16_t inflight = __atomic_load_n(&ctx->frames_inflight, __ATOMIC_ACQUIRE);
@@ -578,7 +578,7 @@ static void connection_context_schedule_next_operation(
         // All frames completed, transition back to reading headers
         ctx->state = XRPC_CONN_STATE_READ_HEADER;
       }
-      xrpc_io_operation_free(ctx->server->io, op);
+      if (op) xrpc_io_operation_free(ctx->server->io, op);
       return;
     }
 
@@ -749,7 +749,7 @@ static void io_connection_completed(struct xrpc_io_operation *op) {
     op = NULL;
 
     /* Enqueue once for cleanup - server loop will free it */
-    xrpc_ringbuf_push(ctx->server->connection_context_rb, ctx);
+    // xrpc_ringbuf_push(ctx->server->connection_context_rb, ctx);
     return;
   }
 
