@@ -165,8 +165,9 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
                           enum xrpc_dtype_base dtyb,
                           enum xrpc_dtype_category dtyc,
                           struct xrpc_response_frame *out_resp) {
-  (void)out_resp;
   if (!cli || !out_resp) return XRPC_API_ERR_INVALID_ARGS;
+
+  if (op > 63) return XRPC_API_ERR_INVALID_ARGS;
 
   // create a request header
   uint8_t scratch[8], *request_data_raw = NULL;
@@ -274,10 +275,10 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
 
   total_response_size = xrpc_calculate_res_fr_data_size(&response_fr_header);
 
-  // reuse request data buffer
-  assert(total_request_size >= total_response_size);
+  // just read a small number for now
+  assert(total_response_size <= 8);
 
-  ret = recv_exact_n(cli->conn, request_data_raw, total_response_size);
+  ret = recv_exact_n(cli->conn, scratch, total_response_size);
 
   if (ret != XRPC_SUCCESS) {
     free(request_data_raw);
@@ -288,9 +289,9 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
   dtyb = xrpc_res_fr_get_dtypb_from_opinfo(response_fr_header.opinfo);
   dtyc = xrpc_res_fr_get_dtypc_from_opinfo(response_fr_header.opinfo);
 
-  ret = xrpc_vector_from_net(dtyb, dtyc, response_fr_header.size_params,
-                             request_data_raw, total_response_size,
-                             out_resp->data, &bytes_written);
+  ret =
+      xrpc_vector_from_net(dtyb, dtyc, response_fr_header.size_params, scratch,
+                           total_response_size, out_resp->data, &bytes_written);
 
   free(request_data_raw);
   request_data_raw = NULL;
