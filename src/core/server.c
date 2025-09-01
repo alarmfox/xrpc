@@ -43,8 +43,8 @@ struct xrpc_connection_context {
   struct xrpc_response_header *response_header;
 
   /* Pointers to raw data coming from the net (network-byte order)*/
-  uint8_t request_header_raw[8];
-  uint8_t response_header_raw[8];
+  uint8_t request_header_raw[sizeof(struct xrpc_request_header)];
+  uint8_t response_header_raw[sizeof(struct xrpc_response_header)];
 
   // counters for state management
   size_t transferred_bytes;
@@ -75,8 +75,8 @@ struct xrpc_frame_context {
   struct xrpc_response_frame_header *response_header;
 
   /* Pointers to raw data coming from the net (network-byte order)*/
-  uint8_t request_header_raw[8];
-  uint8_t response_header_raw[8];
+  uint8_t request_header_raw[12];
+  uint8_t response_header_raw[12];
 
   // Frame data buffers. These will be populated with host byte order
   uint8_t *request_data;
@@ -575,8 +575,8 @@ static void connection_context_schedule_next_operation(
       // All frames have been requested or batch is complete
       // Check if all frames are done processing
       if (inflight == 0) {
-        // All frames completed, transition back to reading headers
-        ctx->state = XRPC_CONN_STATE_READ_HEADER;
+        // All frames completed, send response header with status
+        ctx->state = XRPC_CONN_STATE_WRITE_HEADER;
       }
       if (op) xrpc_io_operation_free(ctx->server->io, op);
       return;
@@ -925,12 +925,22 @@ static void handle_request_header(struct xrpc_connection_context *ctx) {
     ctx->last_error = XRPC_SUCCESS;
     ctx->response_header->payload_size = 0;
     ctx->frames_inflight = 0;
+
+    ctx->response_header->status = ctx->request_header->batch_size;
+    ctx->response_header->batch_id = ctx->request_header->batch_id;
+    xrpc_res_set_type(&ctx->response_header->preamble,
+                      XRPC_RESP_TYPE_BATCH_REPORT);
+
+    xrpc_res_set_version(&ctx->response_header->preamble, XRPC_PROTO_VERSION);
     // Initialize atomic counters for batch processing
     __atomic_store_n(&ctx->frames_inflight, 0, __ATOMIC_RELEASE);
     __atomic_store_n(&ctx->frames_remaining, hdr->batch_size, __ATOMIC_RELEASE);
     __atomic_store_n(&ctx->frames_requested, 0, __ATOMIC_RELEASE);
     break;
   }
+  if (ctx->response_header)
+    ctx->response_header->sequence_number =
+        ctx->request_header->sequence_number + 1;
 }
 
 static void schedule_frame_for_processing(struct xrpc_frame_context *fctx) {

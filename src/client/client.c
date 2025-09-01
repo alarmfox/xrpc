@@ -70,8 +70,7 @@ static void make_prompt(char *buf, size_t len) {
   enum xrpc_client_status status = xrpc_client_status_get(g_client);
   const char *status_str =
       (status < 3) ? g_client_status_str[status] : "unknown";
-  snprintf(buf, len, "xrpc-cli [%s%s] > ", status_str,
-           xrpc_client_get_server_name(g_client));
+  snprintf(buf, len, "xrpc-cli [%s] > ", status_str);
 }
 
 static const struct command *get_command_by_name(const char *name) {
