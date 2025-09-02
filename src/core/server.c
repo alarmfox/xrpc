@@ -938,9 +938,9 @@ static void handle_request_header(struct xrpc_connection_context *ctx) {
     __atomic_store_n(&ctx->frames_requested, 0, __ATOMIC_RELEASE);
     break;
   }
-  if (ctx->response_header)
-    ctx->response_header->sequence_number =
-        ctx->request_header->sequence_number + 1;
+  // increment the sequence number
+  ctx->response_header->sequence_number =
+      ctx->request_header->sequence_number + 1;
 }
 
 static void schedule_frame_for_processing(struct xrpc_frame_context *fctx) {
