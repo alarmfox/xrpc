@@ -70,7 +70,7 @@ The SCALE field allows for dynamic sizing where the actual element size is `size
 
 ## Message Formats
 
-### Request Header (8 bytes)
+### Request Header (12 bytes)
 
 ```
  4bit 4bit   8 bit          16 bit
@@ -79,6 +79,9 @@ The SCALE field allows for dynamic sizing where the actual element size is `size
 +----+----+----+----+----+----+----+----+
 +----+----+----+----+----+----+----+----+
 |     BATCH SIZE    |      RESERVED     | (32 bit)
++----+----+----+----+----+----+----+----+
++----+----+----+----+----+----+----+----+
+|             SEQUENCE NUMBER           | (32 bit)
 +----+----+----+----+----+----+----+----+
 ```
 
@@ -89,6 +92,7 @@ The SCALE field allows for dynamic sizing where the actual element size is `size
 - **BATCH ID** (16 bits): Unique identifier for the batch 
 - **BATCH SIZE** (16 bits): Number of frames (operations) in the batch
 - **RESERVED** (16 bits): Must be zero
+- **SEQUENCE NUMBER** (32 bits): Unique message identifier
 
 ### Request Frame Header (8 bytes)
 
@@ -114,7 +118,7 @@ The SCALE field allows for dynamic sizing where the actual element size is `size
 - **BATCH_ID** (16 bits): Associated batch identifier
 - **FRAME_ID** (16 bits): Unique frame identifier within batch
 
-### Response Header (8 bytes)
+### Response Header (12 bytes)
 
 ```
  4bit 4 bit  8 bit          16 bit
@@ -123,6 +127,9 @@ The SCALE field allows for dynamic sizing where the actual element size is `size
 +----+----+----+----+----+----+----+----+
 +----+----+----+----+----+----+----+----+
 |       STATUS      |    PAYLOAD SIZE   | (32 bit)
++----+----+----+----+----+----+----+----+
++----+----+----+----+----+----+----+----+
+|             SEQUENCE NUMBER           | (32 bit)
 +----+----+----+----+----+----+----+----+
 ```
 
@@ -133,6 +140,7 @@ The SCALE field allows for dynamic sizing where the actual element size is `size
 - **BATCH ID** (16 bits): Corresponding batch identifier
 - **STATUS** (16 bits): Operation status
 - **PAYLOAD SIZE** (16 bits): Size of additional payload data
+- **SEQUENCE NUMBER** (32 bits): Unique message identifier
 
 ### Response Types
 

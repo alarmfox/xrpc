@@ -5,10 +5,11 @@
 #include "xrpc/protocol_utils.h"
 
 void xrpc_request_header_to_net(const struct xrpc_request_header *r,
-                                uint8_t buf[8]) {
+                                uint8_t buf[12]) {
 
   uint32_t w1 = xrpc_req_word1_pack(r->preamble, r->resp_mode, r->batch_id);
   uint32_t w2 = xrpc_req_word2_pack(r->batch_size, r->reserved);
+  uint32_t w3 = htonl(r->sequence_number);
 
   /* convert to network byte order */
   w1 = htonl(w1);
@@ -17,18 +18,21 @@ void xrpc_request_header_to_net(const struct xrpc_request_header *r,
   /* copy to buffer */
   memcpy(buf, &w1, 4);
   memcpy(buf + 4, &w2, 4);
+  memcpy(buf + 8, &w3, 4);
 }
 
-void xrpc_request_header_from_net(const uint8_t buf[8],
+void xrpc_request_header_from_net(const uint8_t buf[12],
                                   struct xrpc_request_header *r) {
-  uint32_t w1, w2;
+  uint32_t w1, w2, w3;
 
   /* copy the 32-bit words first then ntohl */
   memcpy(&w1, buf, 4);
   memcpy(&w2, buf + 4, 4);
+  memcpy(&w3, buf + 8, 4);
 
   w1 = ntohl(w1);
   w2 = ntohl(w2);
+  w3 = ntohl(w3);
 
   /* extract fields using macros  */
   r->preamble = xrpc_req_word1_preamble(w1);
@@ -37,33 +41,40 @@ void xrpc_request_header_from_net(const uint8_t buf[8],
 
   r->batch_size = xrpc_req_word2_batchsize(w2);
   r->reserved = xrpc_req_word2_reserved(w2);
+
+  r->sequence_number = w3;
 }
 
 void xrpc_response_header_to_net(const struct xrpc_response_header *r,
-                                 uint8_t buf[8]) {
+                                 uint8_t buf[12]) {
 
   uint32_t w1 = xrpc_res_word1_pack(r->preamble, r->batch_id);
   uint32_t w2 = xrpc_res_word2_pack(r->status, r->payload_size);
+  uint32_t w3 = r->sequence_number;
 
   /* convert to network byte order */
   w1 = htonl(w1);
   w2 = htonl(w2);
+  w3 = htonl(w3);
 
   /* copy to buffer */
   memcpy(buf, &w1, 4);
   memcpy(buf + 4, &w2, 4);
+  memcpy(buf + 8, &w3, 4);
 }
 
-void xrpc_response_header_from_net(const uint8_t buf[8],
+void xrpc_response_header_from_net(const uint8_t buf[12],
                                    struct xrpc_response_header *r) {
-  uint32_t w1, w2;
+  uint32_t w1, w2, w3;
 
   /* copy the 32-bit words first then ntohl */
   memcpy(&w1, buf, 4);
   memcpy(&w2, buf + 4, 4);
+  memcpy(&w3, buf + 8, 4);
 
   w1 = ntohl(w1);
   w2 = ntohl(w2);
+  w3 = ntohl(w3);
 
   /* extract fields using macros  */
   r->preamble = xrpc_res_word1_preamble(w1);
@@ -71,6 +82,8 @@ void xrpc_response_header_from_net(const uint8_t buf[8],
 
   r->status = xrpc_res_word2_status(w2);
   r->payload_size = xrpc_res_word2_payload_size(w2);
+
+  r->sequence_number = w3;
 }
 
 void xrpc_request_frame_header_to_net(const struct xrpc_request_frame_header *r,

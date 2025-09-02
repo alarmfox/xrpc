@@ -49,6 +49,9 @@ enum xrpc_request_type {
  * +----+----+----+----+----+----+----+----+
  * |     BATCH SIZE    |      RESERVED     | (32 bit)
  * +----+----+----+----+----+----+----+----+
+ * +----+----+----+----+----+----+----+----+
+ * |             SEQUENCE NUMBER           | (32 bit)
+ * +----+----+----+----+----+----+----+----+
  *
  */
 struct xrpc_request_header {
@@ -57,11 +60,12 @@ struct xrpc_request_header {
   uint16_t batch_id;   /* Batch identifier */
   uint16_t batch_size; /* Batch size */
   uint16_t reserved;   /* Reserved. Must be 0*/
+  uint32_t sequence_number;   /* Sequence number */
 };
 
 /* Compile-time check that the struct is the expected size */
-static_assert(sizeof(struct xrpc_request_header) == 8,
-              "Request header must be exactly 8 bytes");
+static_assert(sizeof(struct xrpc_request_header) == 12,
+              "Request header must be exactly 12 bytes");
 
 /* category values */
 enum xrpc_dtype_category {
@@ -149,7 +153,9 @@ enum xrpc_response_type {
  * +----+----+----+----+----+----+----+----+
  * |       STATUS      |    PAYLOAD SIZE   | (32 bit)
  * +----+----+----+----+----+----+----+----+
- *
+ * +----+----+----+----+----+----+----+----+
+ * |             SEQUENCE NUMBER           | (32 bit)
+ * +----+----+----+----+----+----+----+----+
  */
 struct xrpc_response_header {
   uint8_t preamble; /* Protocol Version most significant 4 bit and message type
@@ -158,11 +164,12 @@ struct xrpc_response_header {
   uint16_t batch_id; /* Operation ID */
   uint16_t status;   /* Status ID */
   uint16_t payload_size; /* Size of the payload */
+  uint32_t sequence_number; /* Sequence number */
 };
 
 /* Compile-time check that the struct is the expected size */
-static_assert(sizeof(struct xrpc_response_header) == 8,
-              "Response header must be exactly 8 bytes");
+static_assert(sizeof(struct xrpc_response_header) == 12,
+              "Response header must be exactly 12 bytes");
 
 // Operation status flags
 enum xrpc_fr_resp_status {
@@ -326,14 +333,14 @@ xrpc_calculate_res_fr_data_size(const struct xrpc_response_frame_header *hdr) {
  * Utilities  to serialize and deserialize struct to and from the network.
  */
 void xrpc_request_header_to_net(const struct xrpc_request_header *r,
-                                uint8_t buf[8]);
+                                uint8_t buf[12]);
 
-void xrpc_request_header_from_net(const uint8_t buf[8],
+void xrpc_request_header_from_net(const uint8_t buf[12],
                                   struct xrpc_request_header *r);
 void xrpc_response_header_to_net(const struct xrpc_response_header *r,
-                                 uint8_t buf[8]);
+                                 uint8_t buf[12]);
 
-void xrpc_response_header_from_net(const uint8_t buf[8],
+void xrpc_response_header_from_net(const uint8_t buf[12],
                                    struct xrpc_response_header *r);
 
 void xrpc_request_frame_header_to_net(const struct xrpc_request_frame_header *r,

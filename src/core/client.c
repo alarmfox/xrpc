@@ -170,7 +170,7 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
   if (op > 63) return XRPC_API_ERR_INVALID_ARGS;
 
   // create a request header
-  uint8_t scratch[8], *request_data_raw = NULL;
+  uint8_t scratch[12], *request_data_raw = NULL;
   struct xrpc_request_header request_header = {0};
   struct xrpc_request_frame_header request_fr_header = {0};
   struct xrpc_response_frame_header response_fr_header = {0};
@@ -178,18 +178,19 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
   size_t bytes_written = 0, total_response_size = 0, total_request_size = 0;
   int ret;
 
+  // prepare request header
   xrpc_req_set_version(&request_header.preamble, XRPC_PROTO_VERSION);
   xrpc_req_set_type(&request_header.preamble, XRPC_REQUEST_BATCH_INIT);
+  request_header.sequence_number = 0;
 
   // send the request header
   xrpc_request_header_to_net(&request_header, scratch);
-
-  ret = send_exact_n(cli->conn, scratch, 8);
+  ret = send_exact_n(cli->conn, scratch, sizeof(scratch));
 
   if (ret != XRPC_SUCCESS) return ret;
 
   // get the response header
-  ret = recv_exact_n(cli->conn, scratch, 8);
+  ret = recv_exact_n(cli->conn, scratch, sizeof(scratch));
 
   if (ret != XRPC_SUCCESS) return ret;
 
@@ -201,15 +202,19 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
   if (version != XRPC_PROTO_VERSION) return XRPC_PROTO_ERR_VERSION_MISMATCH;
 
   assert(type == XRPC_RESP_TYPE_ACK);
+  assert((request_header.sequence_number + 1) ==
+         response_header.sequence_number);
 
   xrpc_req_set_type(&request_header.preamble, XRPC_REQUEST_BATCH_START);
   request_header.batch_id = response_header.batch_id;
   request_header.batch_size = 1;
+  request_header.sequence_number = response_header.sequence_number + 1;
+
   memset(&request_header.reserved, 0, 2);
 
   // send the request header
   xrpc_request_header_to_net(&request_header, scratch);
-  ret = send_exact_n(cli->conn, scratch, 8);
+  ret = send_exact_n(cli->conn, scratch, sizeof(scratch));
   if (ret != XRPC_SUCCESS) return ret;
 
   // send the request frame
@@ -295,6 +300,22 @@ int xrpc_client_call_sync(struct xrpc_client *cli, uint8_t op,
 
   free(request_data_raw);
   request_data_raw = NULL;
+
+  // read final response header
+  memset(&response_header, 0, sizeof(response_header));
+  ret = recv_exact_n(cli->conn, scratch, sizeof(scratch));
+
+  if (ret != XRPC_SUCCESS) return ret;
+
+  xrpc_response_header_from_net(scratch, &response_header);
+
+  version = xrpc_res_get_ver_from_preamble(response_header.preamble);
+  type = xrpc_res_get_type_from_preamble(response_header.preamble);
+  if (version != XRPC_PROTO_VERSION) return XRPC_PROTO_ERR_VERSION_MISMATCH;
+
+  assert(type == XRPC_RESP_TYPE_BATCH_REPORT);
+  assert((request_header.sequence_number + 1) ==
+         response_header.sequence_number);
 
   return ret;
 }
