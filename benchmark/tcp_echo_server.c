@@ -55,8 +55,7 @@ static void *report_handler(void *params) {
 static int echo_handler(const struct xrpc_request_frame *req,
                         struct xrpc_response_frame *res) {
 
-  (void)req;
-  (void)res;
+  memcpy(res->data, req->data, req->header->size_params);
   return XRPC_SUCCESS;
 }
 
@@ -70,40 +69,42 @@ static void print_usage(const char *program) {
 }
 
 static void print_config(const struct xrpc_server_config *config) {
-  const struct xrpc_transport_tcp_config *c = &config->transport.config.tcp;
+  const struct xrpc_transport_tcp_config *tcp_config =
+      &config->transport.config.tcp;
   char buf[64];
 
   printf("\n========================================\n");
-  printf(" XRPC TCP Server Benchmark Configuration ");
+  printf(" Benchmark XRPC TCP Server Configuration ");
   printf("\n========================================\n");
 
   printf("  TCP_NODELAY            : %s\n",
-         c->nodelay ? "enabled" : "disabled");
+         tcp_config->nodelay ? "enabled" : "disabled");
   printf("  SO_REUSEADDR           : %s\n",
-         c->reuseaddr ? "enabled" : "disabled");
+         tcp_config->reuseaddr ? "enabled" : "disabled");
   printf("  SO_REUSEPORT           : %s\n",
-         c->reuseport ? "enabled" : "disabled");
+         tcp_config->reuseport ? "enabled" : "disabled");
   printf("  SO_KEEPALIVE           : %s\n",
-         c->keepalive ? "enabled" : "disabled");
+         tcp_config->keepalive ? "enabled" : "disabled");
   printf("  O_NONBLOCK             : %s\n",
-         c->nonblocking ? "enabled" : "disabled");
+         tcp_config->nonblocking ? "enabled" : "disabled");
 
-  PRINT_OPT_OR_DISABLED("TCP_KEEPIDLE           :", buf, c->keepalive_idle,
-                        "s");
-  PRINT_OPT_OR_DISABLED("TCP_KEEPINTVL          :", buf, c->keepalive_interval,
-                        "s");
-  PRINT_OPT_OR_DISABLED("TCP_KEEPCNT            :", buf, c->keepalive_probes,
-                        "");
-  PRINT_OPT_OR_DISABLED("SO_SNDTIMEO            :", buf, c->send_timeout_ms,
-                        "ms");
-  PRINT_OPT_OR_DISABLED("SO_RCVTIMEO            :", buf, c->recv_timeout_ms,
-                        "ms");
-  PRINT_OPT_OR_DISABLED("SO_RCVBUF              :", buf, c->recv_buffer_size,
-                        "bytes");
-  PRINT_OPT_OR_DISABLED("SO_SNDBUF              :", buf, c->send_buffer_size,
-                        "bytes");
+  PRINT_OPT_OR_DISABLED("TCP_KEEPIDLE           :", buf,
+                        tcp_config->keepalive_idle_sec, "s");
+  PRINT_OPT_OR_DISABLED("TCP_KEEPINTVL          :", buf,
+                        tcp_config->keepalive_interval_sec, "s");
+  PRINT_OPT_OR_DISABLED("TCP_KEEPCNT            :", buf,
+                        tcp_config->keepalive_probes, "");
+  PRINT_OPT_OR_DISABLED("SO_SNDTIMEO            :", buf,
+                        tcp_config->send_timeout_ms, "ms");
+  PRINT_OPT_OR_DISABLED("SO_RCVTIMEO            :", buf,
+                        tcp_config->recv_timeout_ms, "ms");
+  PRINT_OPT_OR_DISABLED("SO_RCVBUF              :", buf,
+                        tcp_config->recv_buffer_size, "bytes");
+  PRINT_OPT_OR_DISABLED("SO_SNDBUF              :", buf,
+                        tcp_config->send_buffer_size, "bytes");
 
-  printf("  Connections pool size  : %d\n", c->connection_pool_size);
+  printf("  Connections pool size  : %lu\n",
+         config->transport.connection_pool_size);
   printf("  Requests pool size     : %lu\n", config->max_concurrent_requests);
   printf("  Max concurrent I/O ops : %lu\n",
          config->io.max_concurrent_operations);
@@ -117,24 +118,31 @@ int main(int argc, char **argv) {
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 
-  int report_interval = 2;
+  struct xrpc_benchmark_stats stats = {0};
+  // Default params
   uint16_t port = 9000;
   const char *address = "127.0.0.1";
-  struct sockaddr_in addr = {.sin_addr = {.s_addr = INADDR_LOOPBACK}};
+  int report_interval = 2, opt;
+
   struct xrpc_server_config config = {0};
-  struct xrpc_io_system_config io_config = {.type = XRPC_IO_SYSTEM_BLOCKING,
-                                            .max_concurrent_operations = 128};
 
-  struct xrpc_benchmark_stats stats = {0};
+  config.max_concurrent_requests = 10;
+  config.io = (struct xrpc_io_system_config){
+      .type = XRPC_IO_SYSTEM_BLOCKING,
+      .max_concurrent_operations = 128,
 
-  int opt;
+  };
+
+  assert(xrpc_tcpv4_server_build_default_config(
+             address, port, &config.transport) == XRPC_SUCCESS);
+
   while ((opt = getopt(argc, argv, "p:a:tr:j:h")) != -1) {
     switch (opt) {
     case 'p':
-      port = (uint16_t)atoi(optarg);
+      config.transport.config.tcp.addr.sin_port = htons((uint16_t)atoi(optarg));
       break;
     case 'a':
-      inet_aton(optarg, &addr.sin_addr);
+      inet_aton(optarg, &config.transport.config.tcp.addr.sin_addr);
       break;
     case 'r':
       report_interval = atoi(optarg);
@@ -148,21 +156,6 @@ int main(int argc, char **argv) {
     }
   }
 
-  assert(xrpc_tcpv4_server_build_default_config(address, port, &config) ==
-         XRPC_SUCCESS);
-
-  // Optimize for benchmarking
-  config.transport.config.tcp.nonblocking = false;
-  config.transport.config.tcp.accept_timeout_ms = 100; // Allow periodic reports
-  config.transport.config.tcp.nodelay = true;          // Minimize latency
-  config.transport.config.tcp.connection_pool_size =
-      1000; // Handle many connections
-  config.transport.config.tcp.recv_timeout_ms = 100;
-
-  config.max_concurrent_requests = 1024;
-
-  config.io = io_config;
-
   printf("Creating XRPC Server for benchmarking on %s:%d\n", address, port);
 
   print_config(&config);
@@ -174,7 +167,7 @@ int main(int argc, char **argv) {
 
   if (xrpc_server_register(srv, OP_ECHO, echo_handler, XRPC_RF_OVERWRITE) !=
       XRPC_SUCCESS) {
-    printf("cannot register dummy handler\n");
+    printf("cannot register echo handler\n");
     goto exit;
   }
 
@@ -194,6 +187,7 @@ int main(int argc, char **argv) {
 
   xrpc_server_run(srv);
   if (report_interval > 0) pthread_join(report_thread_id, 0);
+
 exit:
   if (srv) {
     xrpc_server_free(srv);
