@@ -107,7 +107,7 @@ xrpc_tcpv4_server_build_default_config(const char *address, uint16_t port,
   if (!config || !address || port == 0) return XRPC_API_ERR_INVALID_ARGS;
 
   /* Initialize the entire structure to zero */
-  memset(config, 0, sizeof(struct xrpc_server_config));
+  memset(config, 0, sizeof(struct xrpc_transport_config));
 
   int ret;
   struct xrpc_transport_tcp_config tcp_config = {0};
