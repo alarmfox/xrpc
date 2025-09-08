@@ -99,9 +99,11 @@ int main(void) {
 
 exit:
   /* Cleanup */
-  xrpc_client_disconnect(g_client);
-  xrpc_client_free(g_client);
-  g_client = NULL;
+  if (g_client) {
+    xrpc_client_disconnect(g_client);
+    xrpc_client_free(g_client);
+    g_client = NULL;
+  }
 
   return 0;
 }

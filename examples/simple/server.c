@@ -33,9 +33,9 @@ static void signal_handler(int sig) {
 
 static int vector_add_handler(const struct xrpc_request_frame *req,
                               struct xrpc_response_frame *res) {
-  if (!req || !res || !req->data || !res->data) {
+
+  if (!req || !res || !req->data || !res->data)
     return XRPC_API_ERR_INVALID_ARGS;
-  }
 
   // Extract data from request (assuming uint16_t vector)
   uint16_t *input = (uint16_t *)req->data;
