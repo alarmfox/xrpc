@@ -29,7 +29,7 @@ ALL_OBJS        := $(patsubst %.c,%.o,$(ALL_SRCS))
 
 CLI_OBJS        := $(filter src/client/%.o,$(ALL_OBJS))
 LIB_OBJS        := $(filter-out $(CLI_OBJS), $(ALL_OBJS))
-INSTR_OBJS      := $(patsubst %.o,%_bench.o,$(LIB_OBJS))
+LIB_INSTR_OBJS  := $(patsubst %.o,%_bench.o,$(LIB_OBJS))
 
 # Tests
 TEST_SRCS := $(wildcard test/test_*.c)
@@ -40,7 +40,8 @@ TEST_BINS := $(TEST_SRCS:.c=)
 BENCH_SRCS       := $(shell find benchmark -name '*.c' -print)
 BENCH_HELPER_SRC := benchmark/benchmark.c
 BENCH_PROG_SRCS  := $(filter-out $(BENCH_HELPER_SRC),$(BENCH_SRCS))
-BENCH_OBJS       := $(patsubst %.c,%.o,$(BENCH_SRCS))
+BENCH_HELPER_OBJ := $(patsubst %.c,%.o, $(BENCH_HELPER_SRC))
+BENCH_PROG_OBJS  := $(patsubst %.c,%.o,$(BENCH_PROG_SRCS))
 BENCH_BINS       := $(patsubst %.c,%,$(BENCH_PROG_SRCS))
 
 # =========================
@@ -48,7 +49,7 @@ BENCH_BINS       := $(patsubst %.c,%,$(BENCH_PROG_SRCS))
 # =========================
 .PHONY: all clean help examples test benchmark
 
-all: libxrpc.a examples test
+all: libxrpc.a examples test-build
 
 ## libxrpc.a: builds the library
 libxrpc.a: $(LIB_OBJS)
@@ -67,10 +68,10 @@ client: $(CLI_OBJS) $(LIB_OBJS)
 benchmark: $(BENCH_BINS)
 
 ## test: builds all tests
-test: $(TEST_BINS)
+test-build: $(TEST_BINS)
 
 ## test-run: runs all the test
-test-run: test
+test: test-build
 	@for t in $(TEST_BINS); do \
 		echo "Running $$t..."; \
 		./$$t || exit 1; \
@@ -85,8 +86,8 @@ test/%.o: test/%.c
 test/%: test/%.o $(LIB_OBJS)
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
 
-$(BENCH_BINS): %: $(BENCH_OBJS) $(INSTR_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+$(BENCH_BINS): %: %.o $(BENCH_HELPER_OBJ) $(LIB_INSTR_OBJS)
+	$(CC) $(BENCH_CFLAGS) -o $@ $^
 
 benchmark/%.o: benchmark/%.c
 	$(CC) $(CFLAGS) $(BENCH_CFLAGS) -c -o $@ $<
@@ -99,7 +100,7 @@ benchmark/%.o: benchmark/%.c
 
 ## clean: remove all build artifacts
 clean:
-	$(RM) $(LIB_OBJS) $(CLI_OBJS) $(INSTR_OBJS) $(TEST_BINS) $(TEST_OBJS) $(BENCH_OBJS) $(BENCH_BINS) libxrpc.a examples/*/server xrpc_client
+	$(RM) $(LIB_OBJS) $(CLI_OBJS) $(LIB_INSTR_OBJS) $(TEST_BINS) $(TEST_OBJS) $(BENCH_OBJS) $(BENCH_BINS) libxrpc.a examples/*/server xrpc_client
 
 ## help: prints this help message
 help:
