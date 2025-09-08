@@ -14,10 +14,7 @@ on:
 
 jobs:
   build-and-test:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
-    - name: make test
-      run: make test-run
+      run: make test
