@@ -67,10 +67,9 @@ client: $(CLI_OBJS) $(LIB_OBJS)
 ## benchmark: builds the benchmark application
 benchmark: $(BENCH_BINS)
 
-## test: builds all tests
 test-build: $(TEST_BINS)
 
-## test-run: runs all the test
+## test: builds and runs all the tests
 test: test-build
 	@for t in $(TEST_BINS); do \
 		echo "Running $$t..."; \
