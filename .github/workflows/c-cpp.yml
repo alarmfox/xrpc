@@ -19,7 +19,36 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: make test
+
+    # cache dependencies
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: |
+          /tmp/apt-cache/archives/*.deb
+        key: ${{ runner.os }}-${{ hashFiles('Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-
+
+    - name: Restore apt-cache
+      if: steps.cache.outputs.cache-hit == 'true'
       run: |
-        sudo apt-get update && DEBIAN_FRONTEND=noninteractive sudo apt-get install valgrind
+        sudo mkdir -p /var/cache/apt/archives
+        sudo cp -r /tmp/apt-cache/archives/* /var/cache/apt/archives/ || true
+    
+    - name: Setup host (install Valgrind)
+      run: |
+        # install packages
+        sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends \
+        valgrind
+    
+    - name: Save cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        # save packages
+        mkdir -p /tmp/apt-cache/archives
+        sudo cp -r /var/cache/apt/archives/* /tmp/apt-cache/archives/ || true
+        sudo chmod -R a+r /tmp/apt-cache/archives
+
+    - run: |
         make -B SANITIZE=1 test-run test-run-valgrind
