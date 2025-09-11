@@ -20,4 +20,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: make test
-      run: make test-run
+      run: |
+        sudo apt-get update && DEBIAN_FRONTEND=noninteractive sudo apt-get install valgrind
+        make -B SANITIZE=1 test-run test-run-valgrind
