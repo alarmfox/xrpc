@@ -20,7 +20,8 @@ int xrpc_ringbuf_init(struct xrpc_ringbuf **out_rb, const size_t capacity) {
 
   if (capacity == 0) return XRPC_INTERNAL_ERR_RINGBUF_INVALID_ARG;
 
-  struct xrpc_ringbuf *rb = malloc(sizeof(struct xrpc_ringbuf));
+  struct xrpc_ringbuf *rb =
+      aligned_alloc(CACHE_LINE_SIZE, sizeof(struct xrpc_ringbuf));
 
   if (!rb) return XRPC_INTERNAL_ERR_ALLOC;
 

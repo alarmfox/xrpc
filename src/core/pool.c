@@ -28,10 +28,13 @@ int xrpc_pool_init(struct xrpc_pool **out_pool, const size_t max_len,
   struct xrpc_pool *pool = NULL;
   uint8_t *tmp = NULL;
 
-  pool = malloc(sizeof(struct xrpc_pool));
+  pool = aligned_alloc(CACHE_LINE_SIZE, sizeof(struct xrpc_pool));
   if (!pool) return XRPC_INTERNAL_ERR_ALLOC;
 
-  pool->elem_size = align_size(CACHE_LINE_SIZE, elem_size);
+  size_t rounded_elem_size =
+      (elem_size + CACHE_LINE_SIZE - 1) & ~(CACHE_LINE_SIZE - 1);
+
+  pool->elem_size = rounded_elem_size;
   pool->capacity = max_len;
   pool->items = aligned_alloc(CACHE_LINE_SIZE, pool->elem_size * max_len);
 
