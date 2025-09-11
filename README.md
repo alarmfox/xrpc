@@ -37,6 +37,13 @@ Execute all the available tests in `test/` using:
 make test-run
 ```
 
+If you have Valgrind installed and in your `$PATH` you can run the tests with:
+```sh
+make test-run-valgrind
+```
+
+If your platform support sanitizers, you can build tests and run them with `SANITIZE=1`
+
 ## Development
 To get a working LSP, you can use [Bear](https://github.com/rizsotto/Bear) to generate a `compile_commands.json`.
 

@@ -29,8 +29,14 @@ int xrpc_ringbuf_init(struct xrpc_ringbuf **out_rb, const size_t capacity) {
   rb->tail = 0;
 
   // align the allocation. The size of void * should already be memory aligned
-  rb->items = aligned_alloc(CACHE_LINE_SIZE, sizeof(void *) * rb->capacity);
-  if (!rb->items) return XRPC_INTERNAL_ERR_ALLOC;
+  size_t rounded = (sizeof(void *) * rb->capacity + CACHE_LINE_SIZE - 1) &
+                   ~(CACHE_LINE_SIZE - 1);
+
+  rb->items = aligned_alloc(CACHE_LINE_SIZE, rounded);
+  if (!rb->items) {
+    free(rb);
+    return XRPC_INTERNAL_ERR_ALLOC;
+  }
 
   memset(rb->items, 0, sizeof(void *) * rb->capacity);
 

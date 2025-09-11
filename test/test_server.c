@@ -445,7 +445,6 @@ int main() {
   RUN_TEST(test_multiple_rpc_calls);
   RUN_TEST(test_invalid_operation);
   RUN_TEST(test_server_info);
-  return 0;
 
   TEST_REPORT();
   return 0;

@@ -10,15 +10,26 @@ ARFLAGS = rcs
 CFLAGS  = -std=c11 -Wall -Wextra -Werror
 CFLAGS += -Iinclude/ -Ibenchmark/
 
+LDFLAGS = 
+
+# Testing / Benchmark flags
+TEST_CFLAGS  := -Itest/
+BENCH_CFLAGS := -D_POSIX_C_SOURCE=199309L -DBENCHMARK
+
 ifeq ($(DEBUG),1)
 CFLAGS += -O0 -g3 -DDEBUG
 else
 CFLAGS += -O2
 endif
 
-# Testing / Benchmark flags
-TEST_CFLAGS  := -Itest/
-BENCH_CFLAGS := -D_POSIX_C_SOURCE=199309L -DBENCHMARK
+# Disable sanitizers by default since they are not supported everywhere.
+# For example, on `musl` systems they are not available.
+SANITIZE ?= 0
+
+ifeq ($(SANITIZE),1)
+CFLAGS += -g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined
+LDFLAGS += -fsanitize=address,undefined
+endif
 
 # =========================
 #  Sources & Objects
@@ -32,9 +43,9 @@ LIB_OBJS        := $(filter-out $(CLI_OBJS), $(ALL_OBJS))
 INSTR_OBJS      := $(patsubst %.o,%_bench.o,$(LIB_OBJS))
 
 # Tests
-TEST_SRCS := $(wildcard test/test_*.c)
-TEST_OBJS := $(TEST_SRCS:.c=.o)
-TEST_BINS := $(TEST_SRCS:.c=)
+TEST_SRCS := $(shell find test -name 'test_*.c' -print)
+TEST_OBJS := $(patsubst %.c,%.o, $(TEST_SRCS))
+TEST_BINS := $(patsubst %.c,%, $(TEST_SRCS))
 
 # Benchmarks
 BENCH_SRCS       := $(shell find benchmark -name '*.c' -print)
@@ -56,12 +67,12 @@ libxrpc.a: $(LIB_OBJS)
 
 ## examples: builds example applications
 examples: $(LIB_OBJS)
-	$(CC) $(CFLAGS) examples/simple/server.c -o examples/simple/server $^
-	$(CC) $(CFLAGS) examples/simple/client.c -o examples/simple/client $^
+	$(CC) $(CFLAGS) $(LDFLAGS) examples/simple/server.c -o examples/simple/server $^
+	$(CC) $(CFLAGS) $(LDFLAGS) examples/simple/client.c -o examples/simple/client $^
 
 ## client: builds client applications
 client: $(CLI_OBJS) $(LIB_OBJS)
-	$(CC) $(CFLAGS) -o xrpc_client $^
+	$(CC) $(CFLAGS) $(LDFLAGS) -o xrpc_client $^
 
 ## benchmark: builds the benchmark application
 benchmark: $(BENCH_BINS)
@@ -69,10 +80,23 @@ benchmark: $(BENCH_BINS)
 ## test: builds all tests
 test: $(TEST_BINS)
 
-## test-run: runs all the test
+## test-run: runs all the tests
 test-run: test
 	@for t in $(TEST_BINS); do \
 		echo "Running $$t..."; \
+		./$$t || exit 1; \
+	done
+
+## test-run-valgrind: runs all the tests with valgrind
+test-run-valgrind: test
+	@for t in $(TEST_BINS); do \
+		echo "Running $$t with Valgrind..."; \
+		valgrind --tool=memcheck \
+		--leak-check=full \
+		--show-leak-kinds=all \
+		--track-origins=yes \
+		--error-exitcode=1 \
+		--quiet \
 		./$$t || exit 1; \
 	done
 
@@ -83,10 +107,10 @@ test/%.o: test/%.c
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
 
 test/%: test/%.o $(LIB_OBJS)
-	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) $(LDFLAGS) -o $@ $^
 
 $(BENCH_BINS): %: $(BENCH_OBJS) $(INSTR_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 benchmark/%.o: benchmark/%.c
 	$(CC) $(CFLAGS) $(BENCH_CFLAGS) -c -o $@ $<
@@ -99,7 +123,8 @@ benchmark/%.o: benchmark/%.c
 
 ## clean: remove all build artifacts
 clean:
-	$(RM) $(LIB_OBJS) $(CLI_OBJS) $(INSTR_OBJS) $(TEST_BINS) $(TEST_OBJS) $(BENCH_OBJS) $(BENCH_BINS) libxrpc.a examples/*/server xrpc_client
+	$(RM) $(LIB_OBJS) $(CLI_OBJS) $(INSTR_OBJS) $(TEST_BINS) $(TEST_OBJS) $(BENCH_OBJS) \
+	$(BENCH_BINS) libxrpc.a examples/*/server examples/*/client xrpc_client
 
 ## help: prints this help message
 help:

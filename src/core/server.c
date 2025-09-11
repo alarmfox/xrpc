@@ -381,6 +381,11 @@ void xrpc_server_free(struct xrpc_server *srv) {
     srv->connection_context_rb = NULL;
   }
 
+  if (srv->frame_processing_rb) {
+    xrpc_ringbuf_free(srv->frame_processing_rb);
+    srv->frame_processing_rb = NULL;
+  }
+
   if (srv->connection_context_pool) {
     xrpc_pool_free(srv->connection_context_pool);
     srv->connection_context_pool = NULL;

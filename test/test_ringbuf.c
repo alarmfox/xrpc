@@ -88,6 +88,7 @@ static int test_ringbuf_count() {
                    "count should be decremented according to elements");
   }
 
+  xrpc_ringbuf_free(rb);
   TEST_SUCCESS();
 }
 

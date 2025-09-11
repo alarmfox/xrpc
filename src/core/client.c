@@ -29,7 +29,7 @@ static const struct xrpc_client_connection_ops *connection_ops_map[] = {
  */
 static int send_exact_n(struct xrpc_client_connection *conn, const void *buf,
                         size_t len) {
-  if (!conn || !buf || len == 0) { return XRPC_CLIENT_ERR_INVALID_CONFIG; }
+  if (!conn || !buf || len == 0) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 
   size_t bytes_written = 0, total_written = 0;
   int ret = XRPC_SUCCESS;
@@ -58,7 +58,7 @@ static int send_exact_n(struct xrpc_client_connection *conn, const void *buf,
  */
 static int recv_exact_n(struct xrpc_client_connection *conn, void *buf,
                         size_t len) {
-  if (!conn || !buf || len == 0) { return XRPC_CLIENT_ERR_INVALID_CONFIG; }
+  if (!conn || !buf || len == 0) return XRPC_CLIENT_ERR_INVALID_CONFIG;
 
   size_t bytes_read = 0, total_read = 0;
   int ret = XRPC_SUCCESS;
