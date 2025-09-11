@@ -73,8 +73,8 @@ static void *server_thread_func(void *arg) {
       TEST_SERVER_ADDR, TEST_SERVER_PORT, &config.transport);
 
   config.io.type = XRPC_IO_SYSTEM_BLOCKING;
-  config.max_concurrent_requests = 10;
-  config.io.max_concurrent_operations = 10;
+  config.max_concurrent_requests = 16;
+  config.io.max_concurrent_operations = 16;
 
   // Initialize server
   ret = xrpc_server_init(&g_test_server, &config);
