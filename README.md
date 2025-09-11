@@ -42,7 +42,14 @@ If you have Valgrind installed and in your `$PATH` you can run the tests with:
 make test-run-valgrind
 ```
 
-If your platform support sanitizers, you can build tests and run them with `SANITIZE=1`
+You can build and run tests and library with sanitizers using `make SANITIZE=1 ...`.
+If your platform does not support sanitizers (ie. you use musl), you can use the 
+Dockerfile to build an image with glibc.
+
+```sh
+docker build -t xrpc-sanitizers .
+docker run --rm -v $(pwd):/workspace -w /workspace xrpc-build sh -c "make SANITIZE=1 clean test-run && make clean test-run-valgrind"
+```
 
 ## Development
 To get a working LSP, you can use [Bear](https://github.com/rizsotto/Bear) to generate a `compile_commands.json`.

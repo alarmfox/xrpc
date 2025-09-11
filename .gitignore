@@ -6,6 +6,7 @@
 !/.clangd
 !/.github
 !/.gitignore
+!/Dockerfile
 !/Makefile
 !/README.md
 !/PROTOCOL.md
