@@ -51,4 +51,5 @@ jobs:
         sudo chmod -R a+r /tmp/apt-cache/archives
 
     - run: |
-        make test-run test-run-valgrind
+        make SANITIZE=1 clean test-run 
+        make clean test-run-valgrind
