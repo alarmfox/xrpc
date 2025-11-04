@@ -5,7 +5,7 @@
 
 ## Introduction
 A small (but very fun) project to explore RPC in C.
-The target of `xrpc` is to produce a `libxrpc` that users can use in their own projects allowing
+The goal of `xrpc` is to produce a `libxrpc` that users can use in their own projects allowing
 to choose different transport implementations: from raw TCP sockets to RDMA.
 
 Protocol description can be found at [PROTOCOL.md](./PROTOCOL.md).
@@ -37,7 +37,7 @@ Execute all the available tests in `test/` using:
 make test-run
 ```
 
-If you have Valgrind installed and in your `$PATH` you can run the tests with:
+If you have Valgrind installed in your `$PATH` you can run the tests with:
 ```sh
 make test-run-valgrind
 ```
